@@ -16,6 +16,24 @@ const KEY_LIST_TTL_MS = 60 * 60 * 1000; // re-list S3 once per hour
 let keyListCache: string[] = [];
 let keyListFetchedAt = 0;
 
+async function getAllProcessedKeys(): Promise<Set<string>> {
+  const PAGE = 1000;
+  const keys = new Set<string>();
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("processed_logos")
+      .select("s3_key")
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    for (const row of data) keys.add(row.s3_key);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return keys;
+}
+
 // Pre-processed next item: set after returning a queue response so the next
 // GET can return immediately instead of waiting for S3 + Sharp.
 type PreloadedItem = {
@@ -134,11 +152,10 @@ function triggerPreload(currentKey: string) {
   preloading = (async () => {
     try {
       // Fetch processed set fresh so we respect any decisions made since last load
-      const [allKeys, { data: done }] = await Promise.all([
+      const [allKeys, doneSet] = await Promise.all([
         getKeyList(),
-        supabase.from("processed_logos").select("s3_key").limit(100_000),
+        getAllProcessedKeys(),
       ]);
-      const doneSet = new Set((done ?? []).map((r) => r.s3_key));
       doneSet.add(currentKey); // treat current as done (user is about to decide)
       const nextKey = allKeys.find((k) => !doneSet.has(k));
       preloaded = nextKey ? await buildItem(nextKey) : null;
@@ -155,12 +172,10 @@ function triggerPreload(currentKey: string) {
 
 export async function GET() {
   try {
-    const [allKeys, { data: doneRows }] = await Promise.all([
+    const [allKeys, doneSet] = await Promise.all([
       getKeyList(),
-      supabase.from("processed_logos").select("s3_key").limit(100_000),
+      getAllProcessedKeys(),
     ]);
-
-    const doneSet = new Set((doneRows ?? []).map((r) => r.s3_key));
     const total = allKeys.length;
     const doneCount = doneSet.size;
 
