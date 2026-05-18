@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
 
 interface Stats {
   total: number;
@@ -18,6 +19,17 @@ interface BatchResult {
 interface LogEntry extends BatchResult {
   id: number;
   ts: string;
+}
+
+interface CronRun {
+  id: number;
+  trigger: string;
+  processed: number;
+  failed: number;
+  remaining: number;
+  elapsed_ms: number;
+  error: string | null;
+  created_at: string;
 }
 
 interface PreviewData {
@@ -67,6 +79,7 @@ export default function BrandTool() {
   const [reprocessName, setReprocessName] = useState("");
   const [done, setDone] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
+  const [runs, setRuns] = useState<CronRun[]>([]);
   const [error, setError] = useState<string | null>(null);
   const logIdRef = useRef(0);
   const runRef = useRef(false);
@@ -85,6 +98,35 @@ export default function BrandTool() {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [log]);
+
+  // Initial cron run log fetch
+  useEffect(() => {
+    supabase
+      .from("cron_runs")
+      .select("*")
+      .eq("trigger", "cron-brand")
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .then(({ data }) => { if (data) setRuns(data as CronRun[]); });
+  }, []);
+
+  // Live: new cron-brand run logged
+  useEffect(() => {
+    const channel = supabase
+      .channel("brand-cron-runs")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "cron_runs" },
+        (payload) => {
+          const row = payload.new as CronRun;
+          if (row.trigger !== "cron-brand") return;
+          setRuns((prev) => [row, ...prev].slice(0, 50));
+          setStats((prev) => prev ? { ...prev, pending: row.remaining } : prev);
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const addLog = (entries: BatchResult[]) => {
     const ts = new Date().toLocaleTimeString();
@@ -422,6 +464,64 @@ export default function BrandTool() {
               </button>
             </div>
             <p className="mt-2 text-xs text-zinc-400">Previews both images before uploading. Re-uploads even if already processed.</p>
+          </div>
+
+          {/* Cron run log */}
+          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Cron Run Log</h2>
+              <span className="text-xs text-zinc-400 font-mono">cron-brand · every minute</span>
+            </div>
+
+            {runs.length === 0 ? (
+              <div className="px-5 py-10 text-center text-xs text-zinc-400">
+                No cron runs yet. Runs will appear here automatically.
+              </div>
+            ) : (
+              <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-zinc-100 text-zinc-400 text-left">
+                      <th className="px-4 py-2.5 font-medium">Time</th>
+                      <th className="px-4 py-2.5 font-medium">Processed</th>
+                      <th className="px-4 py-2.5 font-medium">Failed</th>
+                      <th className="px-4 py-2.5 font-medium">Remaining</th>
+                      <th className="px-4 py-2.5 font-medium">Duration</th>
+                      <th className="px-4 py-2.5 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-50">
+                    {runs.map((run) => (
+                      <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
+                        <td className="px-4 py-2 text-zinc-400 tabular-nums whitespace-nowrap">
+                          {new Date(run.created_at).toLocaleTimeString()}
+                        </td>
+                        <td className="px-4 py-2 tabular-nums font-medium text-emerald-600">{run.processed}</td>
+                        <td className="px-4 py-2 tabular-nums text-red-500">{run.failed}</td>
+                        <td className="px-4 py-2 tabular-nums text-zinc-500">{run.remaining}</td>
+                        <td className="px-4 py-2 tabular-nums text-zinc-400">{(run.elapsed_ms / 1000).toFixed(1)}s</td>
+                        <td className="px-4 py-2">
+                          {run.error ? (
+                            <span className="text-red-500 truncate max-w-[180px] block" title={run.error}>
+                              {run.error}
+                            </span>
+                          ) : run.processed === 0 && run.remaining === 0 ? (
+                            <span className="text-zinc-400">all done</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                              ok
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Processing log */}
