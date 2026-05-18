@@ -5,6 +5,7 @@ import { S3Client, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/clien
 import { Readable } from "stream";
 import sharp from "sharp";
 import { supabase } from "@/lib/supabase";
+import { getAllProcessedKeys } from "@/lib/logo-processor";
 
 const PADDING = 10;
 const BUCKET = process.env.AWS_BUCKET!;
@@ -16,23 +17,6 @@ const KEY_LIST_TTL_MS = 60 * 60 * 1000; // re-list S3 once per hour
 let keyListCache: string[] = [];
 let keyListFetchedAt = 0;
 
-async function getAllProcessedKeys(): Promise<Set<string>> {
-  const PAGE = 1000;
-  const keys = new Set<string>();
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from("processed_logos")
-      .select("s3_key")
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(error.message);
-    if (!data || data.length === 0) break;
-    for (const row of data) keys.add(row.s3_key);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return keys;
-}
 
 // Pre-processed next item: set after returning a queue response so the next
 // GET can return immediately instead of waiting for S3 + Sharp.

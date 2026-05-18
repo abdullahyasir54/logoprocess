@@ -1,5 +1,12 @@
 {
   "buildCommand": "next build",
   "devCommand": "next dev",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    { "path": "/api/cron/0", "schedule": "* * * * *" },
+    { "path": "/api/cron/1", "schedule": "* * * * *" },
+    { "path": "/api/cron/2", "schedule": "* * * * *" },
+    { "path": "/api/cron/3", "schedule": "* * * * *" },
+    { "path": "/api/cron/4", "schedule": "* * * * *" }
+  ]
 }

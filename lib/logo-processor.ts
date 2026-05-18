@@ -123,3 +123,21 @@ export function keyToName(key: string) {
     .replace(/-logo\.(png|jpg|jpeg|webp)$/i, "")
     .replace(/-/g, " ");
 }
+
+export async function getAllProcessedKeys(): Promise<Set<string>> {
+  const PAGE = 1000;
+  const keys = new Set<string>();
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("processed_logos")
+      .select("s3_key")
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    for (const row of data) keys.add(row.s3_key);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return keys;
+}

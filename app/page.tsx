@@ -14,6 +14,17 @@ interface QueueItem {
   doneCount: number;
 }
 
+interface CronRun {
+  id: number;
+  trigger: string;
+  processed: number;
+  failed: number;
+  remaining: number;
+  elapsed_ms: number;
+  error: string | null;
+  created_at: string;
+}
+
 function LogoPanel({ src, label, size }: { src: string; label: string; size: { width: number; height: number } }) {
   return (
     <div className="flex flex-col items-center gap-3 flex-1">
@@ -47,6 +58,15 @@ function ProgressBar({ value, max }: { value: number; max: number }) {
   );
 }
 
+const WORKER_COLORS: Record<string, string> = {
+  "cron-0": "bg-blue-50 text-blue-700",
+  "cron-1": "bg-violet-50 text-violet-700",
+  "cron-2": "bg-emerald-50 text-emerald-700",
+  "cron-3": "bg-orange-50 text-orange-700",
+  "cron-4": "bg-pink-50 text-pink-700",
+  "manual": "bg-purple-50 text-purple-700",
+};
+
 export default function Home() {
   const [item, setItem] = useState<QueueItem | null>(null);
   const [done, setDone] = useState(false);
@@ -55,6 +75,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [deciding, setDeciding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [runs, setRuns] = useState<CronRun[]>([]);
 
   const fetchNext = useCallback(async () => {
     setLoading(true);
@@ -83,6 +104,29 @@ export default function Home() {
 
   useEffect(() => { fetchNext(); }, [fetchNext]);
 
+  // Initial cron run log fetch
+  useEffect(() => {
+    supabase
+      .from("cron_runs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .then(({ data }) => { if (data) setRuns(data as CronRun[]); });
+  }, []);
+
+  // Live: new cron run logged
+  useEffect(() => {
+    const channel = supabase
+      .channel("cron-runs")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "cron_runs" },
+        (payload) => setRuns((prev) => [payload.new as CronRun, ...prev].slice(0, 50)),
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
   // Live progress: re-count whenever processed_logos changes
   useEffect(() => {
     const channel = supabase
@@ -95,7 +139,7 @@ export default function Home() {
             .from("processed_logos")
             .select("*", { count: "exact", head: true });
           if (count !== null) setDoneCount(count);
-        }
+        },
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -155,8 +199,8 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center px-6 py-10">
-        <div className="w-full max-w-5xl space-y-6">
+      <main className="flex-1 px-6 py-10">
+        <div className="max-w-5xl mx-auto space-y-6">
 
           {/* Error */}
           {error && (
@@ -197,7 +241,6 @@ export default function Home() {
           {/* Review card */}
           {!loading && item && (
             <>
-              {/* Logo name + key */}
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-zinc-900 capitalize">{item.name}</h2>
@@ -206,12 +249,9 @@ export default function Home() {
                 <span className="text-xs text-zinc-400">{doneCount + 1} of {total}</span>
               </div>
 
-              {/* Before / After */}
               <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-8">
                 <div className="flex flex-col sm:flex-row items-stretch gap-8">
                   <LogoPanel src={item.original} label="Before" size={item.originalSize} />
-
-                  {/* Divider */}
                   <div className="flex flex-col items-center justify-center gap-2 shrink-0">
                     <svg className="w-7 h-7 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
@@ -222,12 +262,10 @@ export default function Home() {
                       <p>1×1</p>
                     </div>
                   </div>
-
                   <LogoPanel src={item.processed} label="After" size={item.processedSize} />
                 </div>
               </div>
 
-              {/* Accept / Reject */}
               <div className="flex gap-4">
                 <button
                   onClick={() => decide("reject")}
@@ -239,7 +277,6 @@ export default function Home() {
                   </svg>
                   Reject — keep original
                 </button>
-
                 <button
                   onClick={() => decide("accept")}
                   disabled={deciding}
@@ -260,6 +297,63 @@ export default function Home() {
               </div>
             </>
           )}
+
+          {/* Cron run log */}
+          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Cron run log</h2>
+              <span className="flex items-center gap-1.5 text-xs text-blue-600 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                5 workers · every minute
+              </span>
+            </div>
+            {runs.length === 0 ? (
+              <div className="px-5 py-8 text-center text-xs text-zinc-400">
+                No runs yet — waiting for the first cron to fire.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-zinc-100 text-zinc-400 text-left">
+                      <th className="px-4 py-2.5 font-medium">Time</th>
+                      <th className="px-4 py-2.5 font-medium">Worker</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Done</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Failed</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Left</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Time</th>
+                      <th className="px-4 py-2.5 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-50">
+                    {runs.map((run) => (
+                      <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
+                        <td className="px-4 py-2.5 text-zinc-500 tabular-nums whitespace-nowrap">
+                          {new Date(run.created_at).toLocaleTimeString()}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${WORKER_COLORS[run.trigger] ?? "bg-zinc-100 text-zinc-600"}`}>
+                            {run.trigger}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-green-600 tabular-nums">{run.processed}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-red-500">{run.failed > 0 ? run.failed : <span className="text-zinc-300">—</span>}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-500">{run.remaining.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-400">{(run.elapsed_ms / 1000).toFixed(1)}s</td>
+                        <td className="px-4 py-2.5">
+                          {run.error ? (
+                            <span className="text-red-500 truncate max-w-[140px] block" title={run.error}>{run.error}</span>
+                          ) : (
+                            <span className="text-green-500">✓ ok</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
         </div>
       </main>
