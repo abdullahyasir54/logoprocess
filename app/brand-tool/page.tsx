@@ -88,7 +88,6 @@ export default function BrandTool() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [runs, setRuns] = useState<CronRun[]>([]);
   const [brandLog, setBrandLog] = useState<BrandLogEntry[]>([]);
-  const brandLogEndRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const logIdRef = useRef(0);
   const runRef = useRef(false);
@@ -128,11 +127,6 @@ export default function BrandTool() {
       .limit(200)
       .then(({ data }) => { if (data) setBrandLog(data as BrandLogEntry[]); });
   }, []);
-
-  // Auto-scroll brand log
-  useEffect(() => {
-    brandLogEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [brandLog]);
 
   // Live: new brand processed/skipped
   useEffect(() => {
@@ -556,7 +550,6 @@ export default function BrandTool() {
                     ))}
                   </tbody>
                 </table>
-                <div ref={brandLogEndRef} />
               </div>
             )}
           </div>
