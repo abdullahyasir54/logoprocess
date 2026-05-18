@@ -1,6 +1,5 @@
 {
   "buildCommand": "next build",
   "devCommand": "next dev",
-  "framework": "nextjs",
-  "nodeVersion": "20.x"
+  "framework": "nextjs"
 }
