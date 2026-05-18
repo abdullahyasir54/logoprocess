@@ -173,7 +173,7 @@ export async function GET() {
 //   { limit?: number }
 //     → process next batch of pending brands
 export async function POST(req: Request) {
-  const results: { name: string; fileName: string; status: "ok" | "error"; error?: string }[] = [];
+  const results: { name: string; slug: string; status: "ok" | "error"; error?: string }[] = [];
 
   let limit = DEFAULT_BATCH;
   let forceBrandName: string | null = null;
