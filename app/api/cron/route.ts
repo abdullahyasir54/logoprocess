@@ -30,16 +30,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ done: true, total: allKeys.length });
     }
 
-    const CONCURRENCY = 5;
+    const WORKERS = 5;
 
-    for (let i = 0; i < pending.length; i += CONCURRENCY) {
-      if (Date.now() - start > BUDGET_MS) break;
-      const chunk = pending.slice(i, i + CONCURRENCY);
-      const results = await Promise.allSettled(chunk.map((key) => processAndUpload(key)));
-      for (const r of results) {
-        if (r.status === "fulfilled") processed++;
-        else { console.error("[cron] failed:", r.reason); failed++; }
-      }
+    // Distribute keys across workers in round-robin — no overlapping keys
+    const slices: string[][] = Array.from({ length: WORKERS }, () => []);
+    pending.forEach((key, i) => slices[i % WORKERS].push(key));
+
+    // Each worker processes its own slice sequentially
+    const results = await Promise.allSettled(
+      slices.map(async (slice) => {
+        let n = 0;
+        for (const key of slice) {
+          if (Date.now() - start > BUDGET_MS) break;
+          await processAndUpload(key);
+          n++;
+        }
+        return n;
+      })
+    );
+
+    for (const r of results) {
+      if (r.status === "fulfilled") processed += r.value;
+      else { console.error("[cron] worker failed:", r.reason); failed++; }
     }
 
     return NextResponse.json({
