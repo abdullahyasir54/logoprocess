@@ -46,8 +46,7 @@ export default function Home() {
   const [recent, setRecent] = useState<LogoItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Initial load
-  useEffect(() => {
+  function loadProgress() {
     fetch("/api/progress")
       .then((r) => r.json())
       .then((data) => {
@@ -66,7 +65,14 @@ export default function Home() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }
+
+  // Initial load + poll every 30s as fallback
+  useEffect(() => {
+    loadProgress();
+    const interval = setInterval(loadProgress, 30_000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Supabase Realtime — fires every time cron finishes a logo
   useEffect(() => {
