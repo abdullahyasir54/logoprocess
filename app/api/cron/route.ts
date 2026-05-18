@@ -4,14 +4,17 @@ import { getAllKeys, processAndUpload } from "@/lib/logo-processor";
 
 export const maxDuration = 60;
 
+async function logRun(trigger: string, processed: number, failed: number, remaining: number, elapsed_ms: number, error?: string) {
+  await supabase.from("cron_runs").insert({ trigger, processed, failed, remaining, elapsed_ms, error: error ?? null });
+}
+
 export async function GET() {
   const start = Date.now();
-  const BUDGET_MS = 50_000; // stop at 50s to leave buffer before the 60s limit
+  const BUDGET_MS = 50_000;
   let processed = 0;
   let failed = 0;
 
   try {
-    // Fetch key list + done set once for the whole batch
     const [allKeys, { data: done }] = await Promise.all([
       getAllKeys(),
       supabase.from("processed_logos").select("s3_key"),
@@ -21,16 +24,14 @@ export async function GET() {
     const pending = allKeys.filter((k) => !doneSet.has(k));
 
     if (pending.length === 0) {
+      await logRun("cron", 0, 0, 0, Date.now() - start);
       return NextResponse.json({ done: true, total: allKeys.length });
     }
 
     const WORKERS = 5;
-
-    // Distribute keys across workers in round-robin — no overlapping keys
     const slices: string[][] = Array.from({ length: WORKERS }, () => []);
     pending.forEach((key, i) => slices[i % WORKERS].push(key));
 
-    // Each worker processes its own slice sequentially
     await Promise.all(
       slices.map(async (slice) => {
         for (const key of slice) {
@@ -40,7 +41,6 @@ export async function GET() {
             processed++;
           } catch (err) {
             console.error(`[cron] failed ${key}:`, err);
-            // Mark as failed so it's skipped on future runs
             try {
               await supabase.from("processed_logos").upsert(
                 { s3_key: key, status: "failed" },
@@ -53,17 +53,15 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json({
-      processed,
-      failed,
-      remaining: pending.length - processed - failed,
-      elapsed: Date.now() - start,
-    });
+    const elapsed_ms = Date.now() - start;
+    const remaining = pending.length - processed - failed;
+    await logRun("cron", processed, failed, remaining, elapsed_ms);
+
+    return NextResponse.json({ processed, failed, remaining, elapsed_ms });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed";
     console.error("[cron]", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed" },
-      { status: 500 }
-    );
+    await logRun("cron", processed, failed, 0, Date.now() - start, msg).catch(() => {});
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -4,6 +4,10 @@ import { getAllKeys, processAndUpload } from "@/lib/logo-processor";
 
 export const maxDuration = 60;
 
+async function logRun(trigger: string, processed: number, failed: number, remaining: number, elapsed_ms: number, error?: string) {
+  await supabase.from("cron_runs").insert({ trigger, processed, failed, remaining, elapsed_ms, error: error ?? null });
+}
+
 export async function GET() {
   const start = Date.now();
   const BUDGET_MS = 50_000;
@@ -20,6 +24,7 @@ export async function GET() {
     const pending = allKeys.filter((k) => !doneSet.has(k));
 
     if (pending.length === 0) {
+      await logRun("manual", 0, 0, 0, Date.now() - start);
       return NextResponse.json({ done: true, total: allKeys.length });
     }
 
@@ -48,17 +53,15 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json({
-      processed,
-      failed,
-      remaining: pending.length - processed - failed,
-      elapsed: Math.round((Date.now() - start) / 1000) + "s",
-    });
+    const elapsed_ms = Date.now() - start;
+    const remaining = pending.length - processed - failed;
+    await logRun("manual", processed, failed, remaining, elapsed_ms);
+
+    return NextResponse.json({ processed, failed, remaining, elapsed_ms });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed";
     console.error("[run]", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed" },
-      { status: 500 }
-    );
+    await logRun("manual", processed, failed, 0, Date.now() - start, msg).catch(() => {});
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

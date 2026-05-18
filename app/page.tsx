@@ -10,6 +10,17 @@ interface LogoItem {
   height: number;
 }
 
+interface CronRun {
+  id: number;
+  trigger: string;
+  processed: number;
+  failed: number;
+  remaining: number;
+  elapsed_ms: number;
+  error: string | null;
+  created_at: string;
+}
+
 const PREFIX = "brand-logos/";
 
 function keyToName(key: string) {
@@ -44,6 +55,7 @@ export default function Home() {
   const [doneCount, setDoneCount] = useState(0);
   const [current, setCurrent] = useState<LogoItem | null>(null);
   const [recent, setRecent] = useState<LogoItem[]>([]);
+  const [runs, setRuns] = useState<CronRun[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Initial load
@@ -66,6 +78,28 @@ export default function Home() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    supabase
+      .from("cron_runs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .then(({ data }) => { if (data) setRuns(data as CronRun[]); });
+  }, []);
+
+  // Realtime — new cron run logged
+  useEffect(() => {
+    const channel = supabase
+      .channel("cron-runs")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "cron_runs" },
+        (payload) => {
+          setRuns((prev) => [payload.new as CronRun, ...prev].slice(0, 20));
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   // Supabase Realtime — fires every time cron finishes a logo
@@ -228,6 +262,62 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {/* Run history */}
+        {runs.length > 0 && (
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
+              Run log
+            </h2>
+            <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-zinc-100 text-zinc-400 text-left">
+                    <th className="px-4 py-2.5 font-medium">Time</th>
+                    <th className="px-4 py-2.5 font-medium">Trigger</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Processed</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Failed</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Remaining</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Duration</th>
+                    <th className="px-4 py-2.5 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-50">
+                  {runs.map((run) => (
+                    <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
+                      <td className="px-4 py-2.5 text-zinc-500 tabular-nums whitespace-nowrap">
+                        {new Date(run.created_at).toLocaleTimeString()}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          run.trigger === "manual"
+                            ? "bg-purple-50 text-purple-700"
+                            : "bg-blue-50 text-blue-700"
+                        }`}>
+                          {run.trigger}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-green-600 tabular-nums">{run.processed}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-red-500">{run.failed > 0 ? run.failed : "—"}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-zinc-500">{run.remaining.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-zinc-400">{(run.elapsed_ms / 1000).toFixed(1)}s</td>
+                      <td className="px-4 py-2.5">
+                        {run.error ? (
+                          <span className="text-red-500 truncate max-w-[160px] block" title={run.error}>
+                            {run.error}
+                          </span>
+                        ) : (
+                          <span className="text-green-500">✓ ok</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   );
