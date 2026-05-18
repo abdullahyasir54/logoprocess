@@ -31,22 +31,27 @@ export async function GET() {
     pending.forEach((key, i) => slices[i % WORKERS].push(key));
 
     // Each worker processes its own slice sequentially
-    const results = await Promise.allSettled(
+    await Promise.all(
       slices.map(async (slice) => {
-        let n = 0;
         for (const key of slice) {
           if (Date.now() - start > BUDGET_MS) break;
-          await processAndUpload(key);
-          n++;
+          try {
+            await processAndUpload(key);
+            processed++;
+          } catch (err) {
+            console.error(`[cron] failed ${key}:`, err);
+            // Mark as failed so it's skipped on future runs
+            try {
+              await supabase.from("processed_logos").upsert(
+                { s3_key: key, status: "failed" },
+                { onConflict: "s3_key" }
+              );
+            } catch { /* best effort */ }
+            failed++;
+          }
         }
-        return n;
       })
     );
-
-    for (const r of results) {
-      if (r.status === "fulfilled") processed += r.value;
-      else { console.error("[cron] worker failed:", r.reason); failed++; }
-    }
 
     return NextResponse.json({
       processed,
