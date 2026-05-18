@@ -155,14 +155,19 @@ function triggerPreload(currentKey: string) {
 
 export async function GET() {
   try {
-    // Fetch processed count for progress (cheap — just a count)
-    const { count } = await supabase
-      .from("processed_logos")
-      .select("*", { count: "exact", head: true });
+    const [allKeys, { data: doneRows }] = await Promise.all([
+      getKeyList(),
+      supabase.from("processed_logos").select("s3_key").limit(100_000),
+    ]);
 
-    const allKeys = await getKeyList();
+    const doneSet = new Set((doneRows ?? []).map((r) => r.s3_key));
     const total = allKeys.length;
-    const doneCount = count ?? 0;
+    const doneCount = doneSet.size;
+
+    // Discard preloaded item if it was processed since it was cached
+    if (preloaded && doneSet.has(preloaded.key)) {
+      preloaded = null;
+    }
 
     // Return pre-processed item if ready
     if (preloaded) {
@@ -177,15 +182,14 @@ export async function GET() {
 
     // Re-read module var after the await — TypeScript narrows it to null above
     const afterWait = preloaded as PreloadedItem | null;
-    if (afterWait) {
+    if (afterWait && !doneSet.has(afterWait.key)) {
       preloaded = null;
       triggerPreload(afterWait.key);
       return NextResponse.json({ done: false, ...afterWait, total, doneCount });
     }
+    preloaded = null; // stale or null either way
 
     // Cold start: find next key and process it now
-    const { data: done } = await supabase.from("processed_logos").select("s3_key").limit(100_000);
-    const doneSet = new Set((done ?? []).map((r) => r.s3_key));
     const nextKey = allKeys.find((k) => !doneSet.has(k));
 
     if (!nextKey) {
@@ -193,7 +197,7 @@ export async function GET() {
     }
 
     const item = await buildItem(nextKey);
-    triggerPreload(nextKey); // start pre-processing the one after this
+    triggerPreload(nextKey);
     return NextResponse.json({ done: false, ...item, total, doneCount });
   } catch (err) {
     console.error("[queue]", err);
