@@ -184,7 +184,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-8 space-y-6">
+      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
 
         {/* All done */}
         {allDone && (
@@ -201,40 +201,105 @@ export default function Home() {
           </div>
         )}
 
-        {/* Current logo */}
+        {/* Logo + Run log side by side */}
         {!allDone && (
-          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-8">
-            {current ? (
-              <>
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h2 className="text-lg font-semibold text-zinc-900 capitalize">{current.name}</h2>
-                    <p className="text-xs text-zinc-400 font-mono mt-0.5">{current.key}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+
+            {/* Current logo */}
+            <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-6">
+              {current ? (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="min-w-0">
+                      <h2 className="text-base font-semibold text-zinc-900 capitalize truncate">{current.name}</h2>
+                      <p className="text-xs text-zinc-400 font-mono mt-0.5 truncate">{current.key}</p>
+                    </div>
+                    <span className="text-xs text-zinc-400 tabular-nums shrink-0 ml-3">{doneCount} of {total}</span>
                   </div>
-                  <span className="text-xs text-zinc-400 tabular-nums">{doneCount} of {total}</span>
+                  <CheckerBox className="w-full" style={{ minHeight: 260, height: 260 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      key={current.key}
+                      src={imgSrc(current.key)}
+                      alt={current.name}
+                      className="max-w-[240px] max-h-[240px] object-contain"
+                    />
+                  </CheckerBox>
+                  <p className="text-xs text-zinc-400 text-center mt-3">
+                    {current.width} × {current.height}px
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-3 py-16 text-zinc-400">
+                  <svg className="w-7 h-7 animate-spin text-blue-400" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <p className="text-sm">Waiting for first logo…</p>
                 </div>
-                <CheckerBox className="w-full" style={{ minHeight: 300, height: 300 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    key={current.key}
-                    src={imgSrc(current.key)}
-                    alt={current.name}
-                    className="max-w-[300px] max-h-[300px] object-contain"
-                  />
-                </CheckerBox>
-                <p className="text-xs text-zinc-400 text-center mt-3">
-                  {current.width} × {current.height}px
-                </p>
-              </>
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-3 py-16 text-zinc-400">
-                <svg className="w-7 h-7 animate-spin text-blue-400" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                <p className="text-sm">Waiting for cron to process first logo…</p>
+              )}
+            </div>
+
+            {/* Run log */}
+            <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden flex flex-col" style={{ minHeight: 360 }}>
+              <div className="px-5 py-3.5 border-b border-zinc-100">
+                <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Run log</h2>
               </div>
-            )}
+              {runs.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center px-4 py-8 text-center text-xs text-zinc-400">
+                  No runs yet — waiting for the cron to fire or{" "}
+                  <a href="/api/run" target="_blank" className="text-blue-500 underline ml-1">/api/run</a>
+                </div>
+              ) : (
+                <div className="overflow-y-auto" style={{ maxHeight: 360 }}>
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="border-b border-zinc-100 text-zinc-400 text-left">
+                        <th className="px-4 py-2.5 font-medium">Time</th>
+                        <th className="px-4 py-2.5 font-medium">Trigger</th>
+                        <th className="px-4 py-2.5 font-medium text-right">Done</th>
+                        <th className="px-4 py-2.5 font-medium text-right">Left</th>
+                        <th className="px-4 py-2.5 font-medium text-right">Time</th>
+                        <th className="px-4 py-2.5 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-50">
+                      {runs.map((run) => (
+                        <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
+                          <td className="px-4 py-2.5 text-zinc-500 tabular-nums whitespace-nowrap">
+                            {new Date(run.created_at).toLocaleTimeString()}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              run.trigger === "manual"
+                                ? "bg-purple-50 text-purple-700"
+                                : "bg-blue-50 text-blue-700"
+                            }`}>
+                              {run.trigger}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-green-600 tabular-nums">{run.processed}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-zinc-500">{run.remaining.toLocaleString()}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-zinc-400">{(run.elapsed_ms / 1000).toFixed(1)}s</td>
+                          <td className="px-4 py-2.5">
+                            {run.error ? (
+                              <span className="text-red-500 truncate max-w-[120px] block" title={run.error}>
+                                {run.error}
+                              </span>
+                            ) : (
+                              <span className="text-green-500">
+                                {run.failed > 0 ? `✓ ${run.failed} failed` : "✓ ok"}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
           </div>
         )}
 
@@ -262,67 +327,6 @@ export default function Home() {
             </div>
           </div>
         )}
-
-        {/* Run history */}
-        <div>
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
-              Run log
-            </h2>
-            <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
-              {runs.length === 0 ? (
-                <div className="px-4 py-8 text-center text-xs text-zinc-400">
-                  No runs yet — waiting for the cron to fire or visit{" "}
-                  <a href="/api/run" target="_blank" className="text-blue-500 underline">/api/run</a>{" "}
-                  to trigger manually.
-                </div>
-              ) : (
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-zinc-100 text-zinc-400 text-left">
-                      <th className="px-4 py-2.5 font-medium">Time</th>
-                      <th className="px-4 py-2.5 font-medium">Trigger</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Processed</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Failed</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Remaining</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Duration</th>
-                      <th className="px-4 py-2.5 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-50">
-                    {runs.map((run) => (
-                      <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
-                        <td className="px-4 py-2.5 text-zinc-500 tabular-nums whitespace-nowrap">
-                          {new Date(run.created_at).toLocaleTimeString()}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            run.trigger === "manual"
-                              ? "bg-purple-50 text-purple-700"
-                              : "bg-blue-50 text-blue-700"
-                          }`}>
-                            {run.trigger}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-green-600 tabular-nums">{run.processed}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-red-500">{run.failed > 0 ? run.failed : "—"}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-500">{run.remaining.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-400">{(run.elapsed_ms / 1000).toFixed(1)}s</td>
-                        <td className="px-4 py-2.5">
-                          {run.error ? (
-                            <span className="text-red-500 truncate max-w-[160px] block" title={run.error}>
-                              {run.error}
-                            </span>
-                          ) : (
-                            <span className="text-green-500">✓ ok</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
 
       </main>
     </div>
