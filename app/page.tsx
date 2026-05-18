@@ -264,59 +264,65 @@ export default function Home() {
         )}
 
         {/* Run history */}
-        {runs.length > 0 && (
-          <div>
+        <div>
             <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
               Run log
             </h2>
             <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-zinc-100 text-zinc-400 text-left">
-                    <th className="px-4 py-2.5 font-medium">Time</th>
-                    <th className="px-4 py-2.5 font-medium">Trigger</th>
-                    <th className="px-4 py-2.5 font-medium text-right">Processed</th>
-                    <th className="px-4 py-2.5 font-medium text-right">Failed</th>
-                    <th className="px-4 py-2.5 font-medium text-right">Remaining</th>
-                    <th className="px-4 py-2.5 font-medium text-right">Duration</th>
-                    <th className="px-4 py-2.5 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-50">
-                  {runs.map((run) => (
-                    <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
-                      <td className="px-4 py-2.5 text-zinc-500 tabular-nums whitespace-nowrap">
-                        {new Date(run.created_at).toLocaleTimeString()}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          run.trigger === "manual"
-                            ? "bg-purple-50 text-purple-700"
-                            : "bg-blue-50 text-blue-700"
-                        }`}>
-                          {run.trigger}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-semibold text-green-600 tabular-nums">{run.processed}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-red-500">{run.failed > 0 ? run.failed : "—"}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-zinc-500">{run.remaining.toLocaleString()}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-zinc-400">{(run.elapsed_ms / 1000).toFixed(1)}s</td>
-                      <td className="px-4 py-2.5">
-                        {run.error ? (
-                          <span className="text-red-500 truncate max-w-[160px] block" title={run.error}>
-                            {run.error}
-                          </span>
-                        ) : (
-                          <span className="text-green-500">✓ ok</span>
-                        )}
-                      </td>
+              {runs.length === 0 ? (
+                <div className="px-4 py-8 text-center text-xs text-zinc-400">
+                  No runs yet — waiting for the cron to fire or visit{" "}
+                  <a href="/api/run" target="_blank" className="text-blue-500 underline">/api/run</a>{" "}
+                  to trigger manually.
+                </div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-zinc-100 text-zinc-400 text-left">
+                      <th className="px-4 py-2.5 font-medium">Time</th>
+                      <th className="px-4 py-2.5 font-medium">Trigger</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Processed</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Failed</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Remaining</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Duration</th>
+                      <th className="px-4 py-2.5 font-medium">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-50">
+                    {runs.map((run) => (
+                      <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
+                        <td className="px-4 py-2.5 text-zinc-500 tabular-nums whitespace-nowrap">
+                          {new Date(run.created_at).toLocaleTimeString()}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            run.trigger === "manual"
+                              ? "bg-purple-50 text-purple-700"
+                              : "bg-blue-50 text-blue-700"
+                          }`}>
+                            {run.trigger}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-green-600 tabular-nums">{run.processed}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-red-500">{run.failed > 0 ? run.failed : "—"}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-500">{run.remaining.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-400">{(run.elapsed_ms / 1000).toFixed(1)}s</td>
+                        <td className="px-4 py-2.5">
+                          {run.error ? (
+                            <span className="text-red-500 truncate max-w-[160px] block" title={run.error}>
+                              {run.error}
+                            </span>
+                          ) : (
+                            <span className="text-green-500">✓ ok</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
-        )}
 
       </main>
     </div>
