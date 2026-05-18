@@ -70,7 +70,7 @@ export default function Home() {
   // Initial load + poll every 30s as fallback
   useEffect(() => {
     loadProgress();
-    const interval = setInterval(loadProgress, 30_000);
+    const interval = setInterval(loadProgress, 5_000);
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

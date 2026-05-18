@@ -4,9 +4,13 @@ import { getAllKeys } from "@/lib/logo-processor";
 
 export const maxDuration = 30;
 
+// Cache total so S3 ListObjects only runs once per hour
+let cachedTotal = 0;
+let cachedAt = 0;
+const CACHE_TTL = 60 * 60 * 1000;
+
 export async function GET() {
-  const [allKeys, { count }, { data: recent }] = await Promise.all([
-    getAllKeys(),
+  const [{ count }, { data: recent }] = await Promise.all([
     supabase.from("processed_logos").select("*", { count: "exact", head: true }),
     supabase
       .from("processed_logos")
@@ -15,8 +19,14 @@ export async function GET() {
       .limit(20),
   ]);
 
+  if (!cachedTotal || Date.now() - cachedAt > CACHE_TTL) {
+    const keys = await getAllKeys();
+    cachedTotal = keys.length;
+    cachedAt = Date.now();
+  }
+
   return NextResponse.json({
-    total: allKeys.length,
+    total: cachedTotal,
     doneCount: count ?? 0,
     recent: recent ?? [],
   });
