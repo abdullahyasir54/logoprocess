@@ -135,9 +135,12 @@ export default function Home() {
     }
   }
 
-  // Auto-start on mount
+  // Auto-start on mount — run 3 parallel loops for throughput
   useEffect(() => {
-    startLoop();
+    const PARALLEL = 3;
+    Array.from({ length: PARALLEL }).forEach((_, i) => {
+      setTimeout(() => { if (runRef.current) startLoop(); }, i * 800);
+    });
     return () => { runRef.current = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

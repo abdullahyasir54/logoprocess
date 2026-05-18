@@ -30,16 +30,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ done: true, total: allKeys.length });
     }
 
-    for (const key of pending) {
+    const CONCURRENCY = 5;
+
+    for (let i = 0; i < pending.length; i += CONCURRENCY) {
       if (Date.now() - start > BUDGET_MS) break;
-      try {
-        await processAndUpload(key);
-        processed++;
-        // Add the key to doneSet so we don't re-check Supabase each iteration
-        doneSet.add(key);
-      } catch (err) {
-        console.error(`[cron] failed ${key}:`, err);
-        failed++;
+      const chunk = pending.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(chunk.map((key) => processAndUpload(key)));
+      for (const r of results) {
+        if (r.status === "fulfilled") processed++;
+        else { console.error("[cron] failed:", r.reason); failed++; }
       }
     }
 
