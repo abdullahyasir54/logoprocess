@@ -25,6 +25,13 @@ interface CronRun {
   created_at: string;
 }
 
+interface LastProcessed {
+  key: string;
+  name: string;
+  width: number;
+  height: number;
+}
+
 function LogoPanel({ src, label, size }: { src: string; label: string; size: { width: number; height: number } }) {
   return (
     <div className="flex flex-col items-center gap-3 flex-1">
@@ -76,6 +83,7 @@ export default function Home() {
   const [deciding, setDeciding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runs, setRuns] = useState<CronRun[]>([]);
+  const [lastProcessed, setLastProcessed] = useState<LastProcessed | null>(null);
 
   const fetchNext = useCallback(async () => {
     setLoading(true);
@@ -127,14 +135,28 @@ export default function Home() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Live progress: re-count whenever processed_logos changes
+  // Live progress: re-count and capture last processed logo on every insert
   useEffect(() => {
     const channel = supabase
       .channel("logo-progress")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "processed_logos" },
-        async () => {
+        { event: "INSERT", schema: "public", table: "processed_logos" },
+        async (payload) => {
+          const row = payload.new as {
+            s3_key: string;
+            processed_width: number;
+            processed_height: number;
+          };
+          setLastProcessed({
+            key: row.s3_key,
+            name: row.s3_key
+              .replace("brand-logos/", "")
+              .replace(/-logo\.(png|jpg|jpeg|webp)$/i, "")
+              .replace(/-/g, " "),
+            width: row.processed_width,
+            height: row.processed_height,
+          });
           const { count } = await supabase
             .from("processed_logos")
             .select("*", { count: "exact", head: true });
@@ -298,61 +320,100 @@ export default function Home() {
             </>
           )}
 
-          {/* Cron run log */}
-          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Cron run log</h2>
-              <span className="flex items-center gap-1.5 text-xs text-blue-600 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                5 workers · every minute
-              </span>
+          {/* Last processed + run log */}
+          <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 items-start">
+
+            {/* Last processed */}
+            <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-zinc-100">
+                <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Last processed</h2>
+              </div>
+              {lastProcessed ? (
+                <div className="p-4 flex flex-col items-center gap-3">
+                  <div
+                    className="w-full flex items-center justify-center rounded-xl border border-zinc-200 overflow-hidden"
+                    style={{
+                      minHeight: 180,
+                      backgroundImage:
+                        "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='10' height='10' fill='%23f3f4f6'/%3E%3Crect x='10' y='10' width='10' height='10' fill='%23f3f4f6'/%3E%3C/svg%3E\")",
+                      backgroundSize: "20px 20px",
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      key={lastProcessed.key}
+                      src={`/api/image?key=${encodeURIComponent(lastProcessed.key)}`}
+                      alt={lastProcessed.name}
+                      className="max-w-[160px] max-h-[160px] object-contain"
+                    />
+                  </div>
+                  <p className="text-sm font-medium text-zinc-800 capitalize text-center truncate w-full px-1">{lastProcessed.name}</p>
+                  <p className="text-xs text-zinc-400">{lastProcessed.width} × {lastProcessed.height}px</p>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center px-4 py-12 text-center text-xs text-zinc-400">
+                  Waiting for cron…
+                </div>
+              )}
             </div>
-            {runs.length === 0 ? (
-              <div className="px-5 py-8 text-center text-xs text-zinc-400">
-                No runs yet — waiting for the first cron to fire.
+
+            {/* Cron run log */}
+            <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
+                <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Cron run log</h2>
+                <span className="flex items-center gap-1.5 text-xs text-blue-600 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                  5 workers · every minute
+                </span>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-zinc-100 text-zinc-400 text-left">
-                      <th className="px-4 py-2.5 font-medium">Time</th>
-                      <th className="px-4 py-2.5 font-medium">Worker</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Done</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Failed</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Left</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Time</th>
-                      <th className="px-4 py-2.5 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-50">
-                    {runs.map((run) => (
-                      <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
-                        <td className="px-4 py-2.5 text-zinc-500 tabular-nums whitespace-nowrap">
-                          {new Date(run.created_at).toLocaleTimeString()}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${WORKER_COLORS[run.trigger] ?? "bg-zinc-100 text-zinc-600"}`}>
-                            {run.trigger}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-green-600 tabular-nums">{run.processed}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-red-500">{run.failed > 0 ? run.failed : <span className="text-zinc-300">—</span>}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-500">{run.remaining.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-400">{(run.elapsed_ms / 1000).toFixed(1)}s</td>
-                        <td className="px-4 py-2.5">
-                          {run.error ? (
-                            <span className="text-red-500 truncate max-w-[140px] block" title={run.error}>{run.error}</span>
-                          ) : (
-                            <span className="text-green-500">✓ ok</span>
-                          )}
-                        </td>
+              {runs.length === 0 ? (
+                <div className="px-5 py-8 text-center text-xs text-zinc-400">
+                  No runs yet — waiting for the first cron to fire.
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="border-b border-zinc-100 text-zinc-400 text-left">
+                        <th className="px-4 py-2.5 font-medium">Time</th>
+                        <th className="px-4 py-2.5 font-medium">Worker</th>
+                        <th className="px-4 py-2.5 font-medium text-right">Done</th>
+                        <th className="px-4 py-2.5 font-medium text-right">Failed</th>
+                        <th className="px-4 py-2.5 font-medium text-right">Left</th>
+                        <th className="px-4 py-2.5 font-medium text-right">Time</th>
+                        <th className="px-4 py-2.5 font-medium">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody className="divide-y divide-zinc-50">
+                      {runs.map((run) => (
+                        <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
+                          <td className="px-4 py-2.5 text-zinc-500 tabular-nums whitespace-nowrap">
+                            {new Date(run.created_at).toLocaleTimeString()}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${WORKER_COLORS[run.trigger] ?? "bg-zinc-100 text-zinc-600"}`}>
+                              {run.trigger}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-green-600 tabular-nums">{run.processed}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-red-500">{run.failed > 0 ? run.failed : <span className="text-zinc-300">—</span>}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-zinc-500">{run.remaining.toLocaleString()}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-zinc-400">{(run.elapsed_ms / 1000).toFixed(1)}s</td>
+                          <td className="px-4 py-2.5">
+                            {run.error ? (
+                              <span className="text-red-500 truncate max-w-[140px] block" title={run.error}>{run.error}</span>
+                            ) : (
+                              <span className="text-green-500">✓ ok</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
           </div>
 
         </div>
