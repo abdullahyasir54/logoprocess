@@ -30,9 +30,9 @@ export async function GET() {
 
     const pendingQuery = {
       brandLogo: { $exists: true, $nin: [null, ""] },
-      $or: [
-        { brand_logo_png_url: { $exists: false } },
-        { brand_logo_png_url: { $in: [null, ""] } },
+      $and: [
+        { $or: [{ brand_logo_png_url: { $exists: false } }, { brand_logo_png_url: { $in: [null, ""] } }] },
+        { $or: [{ og_image_jpg_url: { $exists: false } }, { og_image_jpg_url: { $in: [null, ""] } }] },
       ],
     };
 

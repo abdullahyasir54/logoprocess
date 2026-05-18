@@ -6,6 +6,18 @@ export const maxDuration = 60;
 
 const DEFAULT_BATCH = 10;
 
+const BOTH_EMPTY = {
+  $and: [
+    { $or: [{ brand_logo_png_url: { $exists: false } }, { brand_logo_png_url: { $in: [null, ""] } }] },
+    { $or: [{ og_image_jpg_url: { $exists: false } }, { og_image_jpg_url: { $in: [null, ""] } }] },
+  ],
+};
+
+const BOTH_SET = {
+  brand_logo_png_url: { $exists: true, $nin: [null, ""] },
+  og_image_jpg_url: { $exists: true, $nin: [null, ""] },
+};
+
 // GET — stats
 export async function GET() {
   try {
@@ -14,7 +26,7 @@ export async function GET() {
 
     const [total, processed] = await Promise.all([
       col.countDocuments({ brandLogo: { $exists: true, $nin: [null, ""] } }),
-      col.countDocuments({ brand_logo_png_url: { $exists: true, $nin: [null, ""] } }),
+      col.countDocuments(BOTH_SET),
     ]);
 
     return NextResponse.json({ total, processed, pending: total - processed });
@@ -49,13 +61,7 @@ export async function POST(req: Request) {
 
     const query = forceBrandName
       ? { brandName: forceBrandName, brandLogo: { $exists: true, $nin: [null, ""] } }
-      : {
-          brandLogo: { $exists: true, $nin: [null, ""] },
-          $or: [
-            { brand_logo_png_url: { $exists: false } },
-            { brand_logo_png_url: { $in: [null, ""] } },
-          ],
-        };
+      : { brandLogo: { $exists: true, $nin: [null, ""] }, ...BOTH_EMPTY };
 
     if (preview) {
       const doc = await col.findOne(query);
@@ -96,7 +102,7 @@ export async function POST(req: Request) {
 
     const [total, processed] = await Promise.all([
       col.countDocuments({ brandLogo: { $exists: true, $nin: [null, ""] } }),
-      col.countDocuments({ brand_logo_png_url: { $exists: true, $nin: [null, ""] } }),
+      col.countDocuments(BOTH_SET),
     ]);
 
     return NextResponse.json({
