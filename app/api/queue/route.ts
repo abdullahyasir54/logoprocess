@@ -136,7 +136,7 @@ function triggerPreload(currentKey: string) {
       // Fetch processed set fresh so we respect any decisions made since last load
       const [allKeys, { data: done }] = await Promise.all([
         getKeyList(),
-        supabase.from("processed_logos").select("s3_key"),
+        supabase.from("processed_logos").select("s3_key").limit(100_000),
       ]);
       const doneSet = new Set((done ?? []).map((r) => r.s3_key));
       doneSet.add(currentKey); // treat current as done (user is about to decide)
@@ -184,7 +184,7 @@ export async function GET() {
     }
 
     // Cold start: find next key and process it now
-    const { data: done } = await supabase.from("processed_logos").select("s3_key");
+    const { data: done } = await supabase.from("processed_logos").select("s3_key").limit(100_000);
     const doneSet = new Set((done ?? []).map((r) => r.s3_key));
     const nextKey = allKeys.find((k) => !doneSet.has(k));
 
