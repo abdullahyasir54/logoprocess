@@ -21,6 +21,13 @@ interface LogEntry extends BatchResult {
   ts: string;
 }
 
+interface BrandLogEntry {
+  id: number;
+  brand_name: string;
+  status: "processed" | "skipped";
+  created_at: string;
+}
+
 interface CronRun {
   id: number;
   trigger: string;
@@ -80,6 +87,8 @@ export default function BrandTool() {
   const [done, setDone] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [runs, setRuns] = useState<CronRun[]>([]);
+  const [brandLog, setBrandLog] = useState<BrandLogEntry[]>([]);
+  const brandLogEndRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const logIdRef = useRef(0);
   const runRef = useRef(false);
@@ -108,6 +117,36 @@ export default function BrandTool() {
       .order("created_at", { ascending: false })
       .limit(50)
       .then(({ data }) => { if (data) setRuns(data as CronRun[]); });
+  }, []);
+
+  // Initial brand log fetch
+  useEffect(() => {
+    supabase
+      .from("brand_logos")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(200)
+      .then(({ data }) => { if (data) setBrandLog(data as BrandLogEntry[]); });
+  }, []);
+
+  // Auto-scroll brand log
+  useEffect(() => {
+    brandLogEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [brandLog]);
+
+  // Live: new brand processed/skipped
+  useEffect(() => {
+    const channel = supabase
+      .channel("brand-logos-log")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "brand_logos" },
+        (payload) => {
+          setBrandLog((prev) => [payload.new as BrandLogEntry, ...prev].slice(0, 200));
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   // Live: new cron-brand run logged
@@ -464,6 +503,62 @@ export default function BrandTool() {
               </button>
             </div>
             <p className="mt-2 text-xs text-zinc-400">Previews both images before uploading. Re-uploads even if already processed.</p>
+          </div>
+
+          {/* Brand log */}
+          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Brand Log</h2>
+              <span className="text-xs text-zinc-400 tabular-nums">{brandLog.length} entries</span>
+            </div>
+
+            {brandLog.length === 0 ? (
+              <div className="px-5 py-10 text-center text-xs text-zinc-400">
+                No brands processed yet. Entries will appear here in real time.
+              </div>
+            ) : (
+              <div className="overflow-y-auto" style={{ maxHeight: 400 }}>
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-zinc-100 text-zinc-400 text-left">
+                      <th className="px-4 py-2.5 font-medium">Time</th>
+                      <th className="px-4 py-2.5 font-medium">Brand</th>
+                      <th className="px-4 py-2.5 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-50">
+                    {brandLog.map((entry) => (
+                      <tr key={entry.id} className="hover:bg-zinc-50 transition-colors">
+                        <td className="px-4 py-2 text-zinc-400 tabular-nums whitespace-nowrap">
+                          {new Date(entry.created_at).toLocaleTimeString()}
+                        </td>
+                        <td className="px-4 py-2 text-zinc-700 font-medium max-w-[300px] truncate">
+                          {entry.brand_name}
+                        </td>
+                        <td className="px-4 py-2">
+                          {entry.status === "processed" ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                              processed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-zinc-400 font-medium">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              skipped
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div ref={brandLogEndRef} />
+              </div>
+            )}
           </div>
 
           {/* Cron run log */}
