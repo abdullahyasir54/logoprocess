@@ -1,5 +1,6 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import sharp from "sharp";
+import { supabase } from "./supabase";
 
 export const BANNER_W = 1200;
 export const BANNER_H = 630;
@@ -141,4 +142,28 @@ export async function uploadImages(slug: string, squareBuf: Buffer, bannerBuf: B
     squareUrl: `${CDN}/${squareKey}`,
     bannerUrl: `${CDN}/${bannerKey}`,
   };
+}
+
+export async function getDoneBrandNames(): Promise<Set<string>> {
+  const PAGE = 1000;
+  const names = new Set<string>();
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("brand_logos")
+      .select("brand_name")
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    for (const row of data) names.add(row.brand_name as string);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return names;
+}
+
+export async function recordBrandResult(brandName: string, status: "processed" | "skipped") {
+  await supabase
+    .from("brand_logos")
+    .upsert({ brand_name: brandName, status }, { onConflict: "brand_name" });
 }

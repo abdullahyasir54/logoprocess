@@ -104,7 +104,7 @@ export default function BrandTool() {
     supabase
       .from("cron_runs")
       .select("*")
-      .eq("trigger", "cron-brand")
+      .in("trigger", ["cron-brand-0", "cron-brand-1", "cron-brand-2", "cron-brand-3", "cron-brand-4"])
       .order("created_at", { ascending: false })
       .limit(50)
       .then(({ data }) => { if (data) setRuns(data as CronRun[]); });
@@ -119,7 +119,7 @@ export default function BrandTool() {
         { event: "INSERT", schema: "public", table: "cron_runs" },
         (payload) => {
           const row = payload.new as CronRun;
-          if (row.trigger !== "cron-brand") return;
+          if (!row.trigger.startsWith("cron-brand-")) return;
           setRuns((prev) => [row, ...prev].slice(0, 50));
           setStats((prev) => prev ? { ...prev, pending: row.remaining } : prev);
         },
@@ -470,7 +470,7 @@ export default function BrandTool() {
           <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Cron Run Log</h2>
-              <span className="text-xs text-zinc-400 font-mono">cron-brand · every minute</span>
+              <span className="text-xs text-zinc-400 font-mono">5 workers · every minute</span>
             </div>
 
             {runs.length === 0 ? (
@@ -483,6 +483,7 @@ export default function BrandTool() {
                   <thead className="sticky top-0 bg-white">
                     <tr className="border-b border-zinc-100 text-zinc-400 text-left">
                       <th className="px-4 py-2.5 font-medium">Time</th>
+                      <th className="px-4 py-2.5 font-medium">Worker</th>
                       <th className="px-4 py-2.5 font-medium">Processed</th>
                       <th className="px-4 py-2.5 font-medium">Failed</th>
                       <th className="px-4 py-2.5 font-medium">Remaining</th>
@@ -495,6 +496,11 @@ export default function BrandTool() {
                       <tr key={run.id} className="hover:bg-zinc-50 transition-colors">
                         <td className="px-4 py-2 text-zinc-400 tabular-nums whitespace-nowrap">
                           {new Date(run.created_at).toLocaleTimeString()}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className="inline-flex items-center rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-mono text-zinc-600">
+                            {run.trigger.replace("cron-brand-", "w")}
+                          </span>
                         </td>
                         <td className="px-4 py-2 tabular-nums font-medium text-emerald-600">{run.processed}</td>
                         <td className="px-4 py-2 tabular-nums text-red-500">{run.failed}</td>

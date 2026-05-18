@@ -8,6 +8,10 @@
     { "path": "/api/cron/2", "schedule": "* * * * *" },
     { "path": "/api/cron/3", "schedule": "* * * * *" },
     { "path": "/api/cron/4", "schedule": "* * * * *" },
-    { "path": "/api/cron/brand", "schedule": "* * * * *" }
+    { "path": "/api/cron/brand/0", "schedule": "* * * * *" },
+    { "path": "/api/cron/brand/1", "schedule": "* * * * *" },
+    { "path": "/api/cron/brand/2", "schedule": "* * * * *" },
+    { "path": "/api/cron/brand/3", "schedule": "* * * * *" },
+    { "path": "/api/cron/brand/4", "schedule": "* * * * *" }
   ]
 }

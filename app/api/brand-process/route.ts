@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
-import { generateImages, uploadImages, brandFileName, LogoFetchError } from "@/lib/brand-processor";
+import { generateImages, uploadImages, brandFileName, LogoFetchError, recordBrandResult } from "@/lib/brand-processor";
 
 export const maxDuration = 60;
 
@@ -89,13 +89,19 @@ export async function POST(req: Request) {
       try {
         const { slug, squareBuf, bannerBuf } = await generateImages(doc as Record<string, unknown>);
         const { squareUrl, bannerUrl } = await uploadImages(slug, squareBuf, bannerBuf);
-        await col.updateOne(
-          { _id: doc._id },
-          { $set: { brand_logo_png_url: squareUrl, og_image_jpg_url: bannerUrl } },
-        );
+        await Promise.all([
+          col.updateOne(
+            { _id: doc._id },
+            { $set: { brand_logo_png_url: squareUrl, og_image_jpg_url: bannerUrl } },
+          ),
+          recordBrandResult(name, "processed"),
+        ]);
         results.push({ name, slug: brandFileName(name), status: "ok" });
       } catch (err) {
-        if (err instanceof LogoFetchError) continue;
+        if (err instanceof LogoFetchError) {
+          await recordBrandResult(name, "skipped").catch(() => {});
+          continue;
+        }
         results.push({ name, slug: brandFileName(name), status: "error", error: err instanceof Error ? err.message : "Failed" });
       }
     }
