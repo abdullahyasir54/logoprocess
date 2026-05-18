@@ -1,16 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getAllKeys, processAndUpload } from "@/lib/logo-processor";
 
 export const maxDuration = 60;
 
-export async function GET(request: NextRequest) {
-  // Verify the request is from Vercel Cron
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export async function GET() {
   const start = Date.now();
   const BUDGET_MS = 50_000; // stop at 50s to leave buffer before the 60s limit
   let processed = 0;
