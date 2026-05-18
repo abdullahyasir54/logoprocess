@@ -7,7 +7,7 @@ export const maxDuration = 60;
 const DEFAULT_BATCH = 10;
 
 const ELIGIBLE_BASE = {
-  enriched: true,
+  enriched: "True",
   brandLogo: { $exists: true, $nin: [null, ""] },
 };
 
