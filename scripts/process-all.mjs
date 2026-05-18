@@ -130,7 +130,7 @@ async function main() {
 
   const [allKeys, { data: done, error: dbErr }] = await Promise.all([
     getAllKeys(),
-    supabase.from("processed_logos").select("s3_key"),
+    supabase.from("processed_logos").select("s3_key").limit(100000),
   ]);
 
   if (dbErr) {

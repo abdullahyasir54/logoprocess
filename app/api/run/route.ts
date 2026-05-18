@@ -10,14 +10,14 @@ async function logRun(trigger: string, processed: number, failed: number, remain
 
 export async function GET() {
   const start = Date.now();
-  const BUDGET_MS = 50_000;
+  const BUDGET_MS = 42_000;
   let processed = 0;
   let failed = 0;
 
   try {
     const [allKeys, { data: done }] = await Promise.all([
       getAllKeys(),
-      supabase.from("processed_logos").select("s3_key"),
+      supabase.from("processed_logos").select("s3_key").limit(100_000),
     ]);
 
     const doneSet = new Set((done ?? []).map((r) => r.s3_key));
