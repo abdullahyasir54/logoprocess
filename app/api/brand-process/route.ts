@@ -6,6 +6,11 @@ export const maxDuration = 60;
 
 const DEFAULT_BATCH = 10;
 
+const ELIGIBLE_BASE = {
+  enriched: true,
+  brandLogo: { $exists: true, $nin: [null, ""] },
+};
+
 const BOTH_EMPTY = {
   $and: [
     { $or: [{ brand_logo_png_url: { $exists: false } }, { brand_logo_png_url: { $in: [null, ""] } }] },
@@ -25,8 +30,8 @@ export async function GET() {
     const col = client.db("RawDB").collection("brand_migration");
 
     const [total, processed] = await Promise.all([
-      col.countDocuments({ brandLogo: { $exists: true, $nin: [null, ""] } }),
-      col.countDocuments(BOTH_SET),
+      col.countDocuments(ELIGIBLE_BASE),
+      col.countDocuments({ ...ELIGIBLE_BASE, ...BOTH_SET }),
     ]);
 
     return NextResponse.json({ total, processed, pending: total - processed });
@@ -60,8 +65,8 @@ export async function POST(req: Request) {
     const col = client.db("RawDB").collection("brand_migration");
 
     const query = forceBrandName
-      ? { brandName: forceBrandName, brandLogo: { $exists: true, $nin: [null, ""] } }
-      : { brandLogo: { $exists: true, $nin: [null, ""] }, ...BOTH_EMPTY };
+      ? { brandName: forceBrandName, ...ELIGIBLE_BASE }
+      : { ...ELIGIBLE_BASE, ...BOTH_EMPTY };
 
     if (preview) {
       const doc = await col.findOne(query);
@@ -107,8 +112,8 @@ export async function POST(req: Request) {
     }
 
     const [total, processed] = await Promise.all([
-      col.countDocuments({ brandLogo: { $exists: true, $nin: [null, ""] } }),
-      col.countDocuments(BOTH_SET),
+      col.countDocuments(ELIGIBLE_BASE),
+      col.countDocuments({ ...ELIGIBLE_BASE, ...BOTH_SET }),
     ]);
 
     return NextResponse.json({

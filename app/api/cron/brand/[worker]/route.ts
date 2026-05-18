@@ -56,7 +56,7 @@ export async function GET(
       getDoneBrandNames(),
       col
         .find(
-          { brandLogo: { $exists: true, $nin: [null, ""] } },
+          { enriched: true, brandLogo: { $exists: true, $nin: [null, ""] } },
           { projection: { brandName: 1, brandLogo: 1, _id: 1 } },
         )
         .toArray(),
