@@ -100,14 +100,17 @@ export async function processAndUpload(key: string) {
     })
   );
 
-  const { error } = await supabase.from("processed_logos").upsert({
-    s3_key: key,
-    status: "accepted",
-    original_width: originalSize.width,
-    original_height: originalSize.height,
-    processed_width: processedSize.width,
-    processed_height: processedSize.height,
-  });
+  const { error } = await supabase.from("processed_logos").upsert(
+    {
+      s3_key: key,
+      status: "accepted",
+      original_width: originalSize.width,
+      original_height: originalSize.height,
+      processed_width: processedSize.width,
+      processed_height: processedSize.height,
+    },
+    { onConflict: "s3_key" }
+  );
 
   if (error) throw new Error(error.message);
 

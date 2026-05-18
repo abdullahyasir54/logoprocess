@@ -43,14 +43,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Record in Supabase
-    const { error } = await supabase.from("processed_logos").upsert({
-      s3_key: key,
-      status: action === "accept" ? "accepted" : "rejected",
-      original_width: originalSize?.width,
-      original_height: originalSize?.height,
-      processed_width: processedSize?.width,
-      processed_height: processedSize?.height,
-    });
+    const { error } = await supabase.from("processed_logos").upsert(
+      {
+        s3_key: key,
+        status: action === "accept" ? "accepted" : "rejected",
+        original_width: originalSize?.width,
+        original_height: originalSize?.height,
+        processed_width: processedSize?.width,
+        processed_height: processedSize?.height,
+      },
+      { onConflict: "s3_key" }
+    );
 
     if (error) throw new Error(error.message);
 
