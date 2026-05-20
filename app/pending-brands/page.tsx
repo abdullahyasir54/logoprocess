@@ -59,7 +59,6 @@ export default function PendingBrands() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const selectedItemRef = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
     fetch("/api/pending-brands")
@@ -179,9 +178,6 @@ export default function PendingBrands() {
     if (status !== filter) setSelectedName(null);
   }, [filter, selectedName, localStatus]);
 
-  useEffect(() => {
-    selectedItemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [selectedName]);
 
   const advanceToNext = useCallback((justDoneName: string, newStatus: LocalStatus, currentFilter: Filter) => {
     // Advance within the current filter's remaining list
@@ -380,7 +376,6 @@ export default function PendingBrands() {
               return (
                 <li
                   key={brand.id}
-                  ref={isSelected ? selectedItemRef : undefined}
                   onClick={() => selectBrand(brand.name)}
                   className={`flex items-center gap-2.5 px-4 py-2.5 cursor-pointer transition-colors text-sm ${
                     isSelected
