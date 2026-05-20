@@ -5,7 +5,6 @@ import {
   generateOgFromPng,
   uploadOgImage,
   LogoFetchError,
-  getDoneOgBrandNames,
   recordOgResult,
 } from "@/lib/brand-processor";
 
@@ -51,19 +50,22 @@ export async function GET(
     const client = await clientPromise;
     const col = client.db("RawDB").collection("brand_migration");
 
-    const [doneNames, allDocs] = await Promise.all([
-      getDoneOgBrandNames(),
-      col
-        .find(
-          { step: 4, brand_logo_png_url: { $exists: true, $nin: [null, ""] } },
-          { projection: { brandName: 1, brand_logo_png_url: 1, _id: 1 } },
-        )
-        .toArray(),
-    ]);
+    // Query MongoDB directly for brands missing og_image_jpg_url — no Supabase roundtrip needed
+    const allDocs = await col
+      .find(
+        {
+          step: 4,
+          brand_logo_png_url: { $exists: true, $nin: [null, ""] },
+          $or: [
+            { og_image_jpg_url: { $exists: false } },
+            { og_image_jpg_url: { $in: [null, ""] } },
+          ],
+        },
+        { projection: { brandName: 1, brand_logo_png_url: 1, _id: 1 } },
+      )
+      .toArray();
 
-    const pending = allDocs
-      .filter((doc) => !doneNames.has(String(doc.brandName ?? doc._id)))
-      .filter((_, i) => i % TOTAL_WORKERS === worker);
+    const pending = allDocs.filter((_, i) => i % TOTAL_WORKERS === worker);
 
     if (pending.length === 0) {
       await logRun(worker, 0, 0, 0, Date.now() - start);
