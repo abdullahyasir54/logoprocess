@@ -68,13 +68,21 @@ export async function generateImages(
     try {
       fetchRes = await fetch(logoUrl, {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; brand-processor/1.0)" },
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(5_000),
       });
     } catch (err) {
       throw new LogoFetchError(`Network error: ${err instanceof Error ? err.message : "unknown"}`);
     }
     if (!fetchRes.ok) throw new LogoFetchError(`Fetch failed: ${fetchRes.status}`);
     inputBuf = Buffer.from(await fetchRes.arrayBuffer());
+  }
+
+  // Pre-resize large inputs so trim() and subsequent ops run faster
+  const initMeta = await sharp(inputBuf).metadata();
+  if ((initMeta.width ?? 0) > 1000 || (initMeta.height ?? 0) > 1000) {
+    inputBuf = await sharp(inputBuf)
+      .resize(1000, 1000, { fit: "inside", kernel: "lanczos3" })
+      .toBuffer();
   }
 
   const meta = await sharp(inputBuf).metadata();

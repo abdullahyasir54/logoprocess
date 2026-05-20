@@ -49,6 +49,7 @@ export default function PendingBrands() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isFetchError, setIsFetchError] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<{ name: string; dataUrl: string } | null>(null);
+  const [previewCache, setPreviewCache] = useState<Record<string, PreviewData>>({});
   const [processing, setProcessing] = useState(false);
   const [processError, setProcessError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,37 +74,57 @@ export default function PendingBrands() {
   const pendingBrands = brands.filter((b) => (localStatus[b.name] ?? "pending") === "pending");
   const doneCount = Object.values(localStatus).filter((s) => s === "done").length;
 
+  const fetchPreviewData = useCallback(async (name: string, fileData?: string): Promise<PreviewData | null> => {
+    const body: Record<string, unknown> = { brandName: name, preview: true };
+    if (fileData) body.logoData = fileData;
+    const res = await fetch("/api/pending-brands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw Object.assign(new Error(data.error ?? "Failed"), { fetchError: !!data.fetchError });
+    return { square: data.square, banner: data.banner, slug: data.slug };
+  }, []);
+
+  const preloadBrand = useCallback(async (name: string, brandsList: Brand[], cache: Record<string, PreviewData>) => {
+    const brand = brandsList.find((b) => b.name === name);
+    if (!brand?.logoUrl || cache[name]) return;
+    try {
+      const result = await fetchPreviewData(name);
+      if (result) setPreviewCache((prev) => ({ ...prev, [name]: result }));
+    } catch { /* silent — preload failures are non-fatal */ }
+  }, [fetchPreviewData]);
+
   const generatePreview = useCallback(async (name: string, fileData?: string) => {
     setPreview(null);
     setPreviewError(null);
     setIsFetchError(false);
     setProcessError(null);
+
+    // Serve from cache instantly if available (and no file override)
+    if (!fileData && previewCache[name]) {
+      setPreview(previewCache[name]);
+      return;
+    }
+
     setPreviewLoading(true);
     try {
-      const body: Record<string, unknown> = { brandName: name, preview: true };
-      if (fileData) body.logoData = fileData;
-      const res = await fetch("/api/pending-brands", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setPreviewError(data.error ?? "Failed to generate preview");
-        setIsFetchError(!!data.fetchError);
-        return;
-      }
-      setPreview({ square: data.square, banner: data.banner, slug: data.slug });
-    } catch {
-      setPreviewError("Network error — could not reach server");
-      setIsFetchError(true);
+      const result = await fetchPreviewData(name, fileData);
+      setPreview(result);
+      if (!fileData && result) setPreviewCache((prev) => ({ ...prev, [name]: result }));
+    } catch (err) {
+      const e = err as Error & { fetchError?: boolean };
+      setPreviewError(e.message);
+      setIsFetchError(!!e.fetchError);
     } finally {
       setPreviewLoading(false);
     }
-  }, []);
+  }, [fetchPreviewData, previewCache]);
 
-  const selectBrand = useCallback((name: string, brandsList?: Brand[]) => {
+  const selectBrand = useCallback((name: string, brandsList?: Brand[], cache?: Record<string, PreviewData>) => {
     const list = brandsList ?? brands;
+    const currentCache = cache ?? previewCache;
     setSelectedName(name);
     setUploadedFile(null);
     setPreview(null);
@@ -119,11 +140,16 @@ export default function PendingBrands() {
         generatePreview(name);
       }
     }
-  }, [brands, generatePreview]);
+    // Preload the next pending brand in the background
+    const pendingList = list.filter((b) => (b.name === name) || !currentCache[b.name]);
+    const idx = pendingList.findIndex((b) => b.name === name);
+    const next = pendingList[idx + 1];
+    if (next) preloadBrand(next.name, list, currentCache);
+  }, [brands, previewCache, generatePreview, preloadBrand]);
 
   useEffect(() => {
     if (!loading && brands.length > 0 && selectedName === null) {
-      selectBrand(brands[0].name, brands);
+      selectBrand(brands[0].name, brands, {});
     }
   }, [loading, brands, selectedName, selectBrand]);
 
@@ -140,7 +166,7 @@ export default function PendingBrands() {
     } else {
       setSelectedName(null);
     }
-  }, [brands, localStatus, selectBrand]);
+  }, [brands, localStatus, selectBrand]);  // previewCache intentionally omitted — advance uses current cache via closure
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
