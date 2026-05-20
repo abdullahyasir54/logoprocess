@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
+import { supabase } from "@/lib/supabase";
 import { generateImages, uploadImages, recordBrandResult, LogoFetchError } from "@/lib/brand-processor";
 
 export const maxDuration = 60;
@@ -16,12 +17,24 @@ export async function GET() {
       .sort({ brandName: 1 })
       .toArray();
 
+    // Fetch Supabase statuses for all returned brands in one query
+    const names = docs.map((d) => String(d.brandName ?? d._id));
+    let statusMap = new Map<string, string>();
+    if (names.length > 0) {
+      const { data } = await supabase
+        .from("brand_logos")
+        .select("brand_name, status")
+        .in("brand_name", names);
+      if (data) statusMap = new Map(data.map((r) => [r.brand_name as string, r.status as string]));
+    }
+
     return NextResponse.json({
       brands: docs.map((d) => ({
         id: String(d._id),
         name: String(d.brandName ?? d._id),
         logoUrl: d.brandLogo ? String(d.brandLogo) : null,
         website: d.brandWebsite ? String(d.brandWebsite) : null,
+        status: statusMap.get(String(d.brandName ?? d._id)) ?? "pending",
       })),
       total: docs.length,
     });
@@ -32,14 +45,23 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const { brandName, logoUrl, logoData, preview } = body as {
+  const { brandName, logoUrl, logoData, preview, skip } = body as {
     brandName?: string;
     logoUrl?: string;
-    logoData?: string; // base64 data URL from file upload
+    logoData?: string;
     preview?: boolean;
+    skip?: boolean;
   };
 
   if (!brandName) return NextResponse.json({ error: "brandName required" }, { status: 400 });
+
+  // Skip action — just write to Supabase
+  if (skip) {
+    await supabase
+      .from("brand_logos")
+      .upsert({ brand_name: brandName, status: "skipped" }, { onConflict: "brand_name" });
+    return NextResponse.json({ ok: true });
+  }
 
   try {
     const client = await clientPromise;
@@ -47,12 +69,10 @@ export async function POST(req: Request) {
     const doc = await col.findOne({ brandName, logo_pending: true });
     if (!doc) return NextResponse.json({ error: "Brand not found or already processed" }, { status: 404 });
 
-    // Resolve logo buffer: uploaded file > override URL > stored brandLogo
     let logoBuffer: Buffer | undefined;
-    let effectiveDoc = { ...doc } as Record<string, unknown>;
+    const effectiveDoc = { ...doc } as Record<string, unknown>;
 
     if (logoData) {
-      // Strip data URL prefix: "data:image/png;base64,<data>"
       const base64 = logoData.includes(",") ? logoData.split(",")[1] : logoData;
       logoBuffer = Buffer.from(base64, "base64");
     } else if (logoUrl) {

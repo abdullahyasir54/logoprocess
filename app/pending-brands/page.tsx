@@ -7,6 +7,7 @@ interface Brand {
   name: string;
   logoUrl: string | null;
   website: string | null;
+  status: "pending" | "skipped";
 }
 
 interface PreviewData {
@@ -17,8 +18,6 @@ interface PreviewData {
 
 type LocalStatus = "pending" | "done" | "skipped";
 type Filter = "pending" | "skipped";
-
-const STORAGE_KEY = "pending-brands-status";
 
 function Spinner({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -62,26 +61,19 @@ export default function PendingBrands() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedItemRef = useRef<HTMLLIElement>(null);
 
-  // Load persisted status on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setLocalStatus(JSON.parse(saved));
-    } catch { /* ignore */ }
-  }, []);
-
-  // Persist status on every change
-  useEffect(() => {
-    if (Object.keys(localStatus).length === 0) return;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(localStatus)); } catch { /* ignore */ }
-  }, [localStatus]);
-
   useEffect(() => {
     fetch("/api/pending-brands")
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
-        setBrands(data.brands ?? []);
+        const brandList: Brand[] = data.brands ?? [];
+        setBrands(brandList);
+        // Seed localStatus from Supabase statuses returned by the API
+        const seed: Record<string, LocalStatus> = {};
+        for (const b of brandList) {
+          if (b.status === "skipped") seed[b.name] = "skipped";
+        }
+        setLocalStatus(seed);
         setLoading(false);
       })
       .catch((err) => {
@@ -239,14 +231,6 @@ export default function PendingBrands() {
     e.target.value = "";
   };
 
-  const updateStatus = useCallback((name: string, status: LocalStatus) => {
-    setLocalStatus((prev) => {
-      const next = { ...prev, [name]: status };
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
-
   const handleProcess = async () => {
     if (!selectedName) return;
     setProcessing(true);
@@ -262,7 +246,7 @@ export default function PendingBrands() {
       const data = await res.json();
       if (!res.ok) { setProcessError(data.error ?? "Upload failed"); return; }
       const name = selectedName;
-      updateStatus(name, "done");
+      setLocalStatus((prev) => ({ ...prev, [name]: "done" }));
       advanceToNext(name, "done", filter);
     } catch {
       setProcessError("Network error — upload failed");
@@ -271,11 +255,17 @@ export default function PendingBrands() {
     }
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
     if (!selectedName) return;
     const name = selectedName;
-    updateStatus(name, "skipped");
+    // Optimistically update UI, then persist to Supabase
+    setLocalStatus((prev) => ({ ...prev, [name]: "skipped" }));
     advanceToNext(name, "skipped", filter);
+    await fetch("/api/pending-brands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brandName: name, skip: true }),
+    }).catch(() => { /* non-blocking */ });
   };
 
   const currentBrand = brands.find((b) => b.name === selectedName) ?? null;
