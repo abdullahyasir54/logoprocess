@@ -293,7 +293,7 @@ export default function PendingBrands() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 font-sans flex flex-col">
+    <div className="h-screen bg-zinc-50 font-sans flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-white border-b border-zinc-200 px-6 py-4 shrink-0">
         <div className="flex items-center justify-between">
@@ -414,7 +414,7 @@ export default function PendingBrands() {
         </aside>
 
         {/* Main panel */}
-        <main className="flex-1 overflow-y-auto px-8 py-8">
+        <main className="flex-1 overflow-hidden px-8 py-8">
           {loading ? (
             <div className="flex items-center justify-center h-full text-zinc-400">
               <Spinner className="w-6 h-6" />
