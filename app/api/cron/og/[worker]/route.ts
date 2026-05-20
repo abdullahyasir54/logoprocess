@@ -55,7 +55,7 @@ export async function GET(
       getDoneOgBrandNames(),
       col
         .find(
-          { brand_logo_png_url: { $exists: true, $nin: [null, ""] } },
+          { step: 4, brand_logo_png_url: { $exists: true, $nin: [null, ""] } },
           { projection: { brandName: 1, brand_logo_png_url: 1, _id: 1 } },
         )
         .toArray(),
