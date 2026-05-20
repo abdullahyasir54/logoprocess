@@ -11,7 +11,7 @@ export async function GET() {
     const docs = await col
       .find(
         { logo_pending: true },
-        { projection: { brandName: 1, brandLogo: 1, _id: 1 } },
+        { projection: { brandName: 1, brandLogo: 1, brandWebsite: 1, _id: 1 } },
       )
       .sort({ brandName: 1 })
       .toArray();
@@ -21,6 +21,7 @@ export async function GET() {
         id: String(d._id),
         name: String(d.brandName ?? d._id),
         logoUrl: d.brandLogo ? String(d.brandLogo) : null,
+        website: d.brandWebsite ? String(d.brandWebsite) : null,
       })),
       total: docs.length,
     });
@@ -31,9 +32,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const { brandName, logoUrl, preview } = body as {
+  const { brandName, logoUrl, logoData, preview } = body as {
     brandName?: string;
     logoUrl?: string;
+    logoData?: string; // base64 data URL from file upload
     preview?: boolean;
   };
 
@@ -45,12 +47,23 @@ export async function POST(req: Request) {
     const doc = await col.findOne({ brandName, logo_pending: true });
     if (!doc) return NextResponse.json({ error: "Brand not found or already processed" }, { status: 404 });
 
-    const effectiveDoc = { ...doc, ...(logoUrl ? { brandLogo: logoUrl } : {}) } as Record<string, unknown>;
-    if (!effectiveDoc.brandLogo) {
-      return NextResponse.json({ error: "No logo URL available — provide one below", fetchError: true }, { status: 422 });
+    // Resolve logo buffer: uploaded file > override URL > stored brandLogo
+    let logoBuffer: Buffer | undefined;
+    let effectiveDoc = { ...doc } as Record<string, unknown>;
+
+    if (logoData) {
+      // Strip data URL prefix: "data:image/png;base64,<data>"
+      const base64 = logoData.includes(",") ? logoData.split(",")[1] : logoData;
+      logoBuffer = Buffer.from(base64, "base64");
+    } else if (logoUrl) {
+      effectiveDoc.brandLogo = logoUrl;
     }
 
-    const { slug, squareBuf, bannerBuf } = await generateImages(effectiveDoc);
+    if (!logoBuffer && !effectiveDoc.brandLogo) {
+      return NextResponse.json({ error: "No logo available — upload an image", fetchError: true }, { status: 422 });
+    }
+
+    const { slug, squareBuf, bannerBuf } = await generateImages(effectiveDoc, logoBuffer);
 
     if (preview) {
       return NextResponse.json({

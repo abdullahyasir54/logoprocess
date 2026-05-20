@@ -48,26 +48,34 @@ async function detectBg(buf: Buffer) {
   return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
 }
 
-export async function generateImages(doc: Record<string, unknown>): Promise<{
+export async function generateImages(
+  doc: Record<string, unknown>,
+  logoBuffer?: Buffer,
+): Promise<{
   slug: string;
   squareBuf: Buffer;
   bannerBuf: Buffer;
 }> {
   const brandName = String(doc.brandName ?? "brand");
-  const logoUrl = String(doc.brandLogo);
   const slug = brandFileName(brandName);
 
-  let fetchRes: Response;
-  try {
-    fetchRes = await fetch(logoUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; brand-processor/1.0)" },
-      signal: AbortSignal.timeout(15_000),
-    });
-  } catch (err) {
-    throw new LogoFetchError(`Network error: ${err instanceof Error ? err.message : "unknown"}`);
+  let inputBuf: Buffer;
+  if (logoBuffer) {
+    inputBuf = logoBuffer;
+  } else {
+    const logoUrl = String(doc.brandLogo);
+    let fetchRes: Response;
+    try {
+      fetchRes = await fetch(logoUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; brand-processor/1.0)" },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (err) {
+      throw new LogoFetchError(`Network error: ${err instanceof Error ? err.message : "unknown"}`);
+    }
+    if (!fetchRes.ok) throw new LogoFetchError(`Fetch failed: ${fetchRes.status}`);
+    inputBuf = Buffer.from(await fetchRes.arrayBuffer());
   }
-  if (!fetchRes.ok) throw new LogoFetchError(`Fetch failed: ${fetchRes.status}`);
-  const inputBuf = Buffer.from(await fetchRes.arrayBuffer());
 
   const meta = await sharp(inputBuf).metadata();
   const hasAlpha = (meta.channels ?? 3) >= 4;
