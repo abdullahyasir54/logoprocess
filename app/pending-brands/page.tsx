@@ -258,13 +258,24 @@ export default function PendingBrands() {
   const handleSkip = async () => {
     if (!selectedName) return;
     const name = selectedName;
-    // Optimistically update UI, then persist to Supabase
     setLocalStatus((prev) => ({ ...prev, [name]: "skipped" }));
     advanceToNext(name, "skipped", filter);
     await fetch("/api/pending-brands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ brandName: name, skip: true }),
+    }).catch(() => { /* non-blocking */ });
+  };
+
+  const handleMoveToPending = async () => {
+    if (!selectedName) return;
+    const name = selectedName;
+    setLocalStatus((prev) => ({ ...prev, [name]: "pending" }));
+    advanceToNext(name, "pending", filter);
+    await fetch("/api/pending-brands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brandName: name, moveToPending: true }),
     }).catch(() => { /* non-blocking */ });
   };
 
@@ -614,16 +625,29 @@ export default function PendingBrands() {
 
               {/* Action buttons */}
               <div className="flex items-center gap-3">
-                <button
-                  onClick={handleSkip}
-                  disabled={processing}
-                  className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 py-3 text-sm font-semibold text-zinc-600 hover:bg-zinc-50 transition disabled:opacity-50"
-                >
-                  <svg className="w-4 h-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                  </svg>
-                  {filter === "skipped" ? "Keep skipped" : "Skip for now"}
-                </button>
+                {filter === "skipped" ? (
+                  <button
+                    onClick={handleMoveToPending}
+                    disabled={processing}
+                    className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 py-3 text-sm font-semibold text-zinc-600 hover:bg-zinc-50 transition disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                    Move to Pending
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSkip}
+                    disabled={processing}
+                    className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 py-3 text-sm font-semibold text-zinc-600 hover:bg-zinc-50 transition disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    </svg>
+                    Skip for now
+                  </button>
+                )}
 
                 <button
                   onClick={handleProcess}

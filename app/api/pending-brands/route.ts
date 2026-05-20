@@ -45,21 +45,28 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const { brandName, logoUrl, logoData, preview, skip } = body as {
+  const { brandName, logoUrl, logoData, preview, skip, moveToPending } = body as {
     brandName?: string;
     logoUrl?: string;
     logoData?: string;
     preview?: boolean;
     skip?: boolean;
+    moveToPending?: boolean;
   };
 
   if (!brandName) return NextResponse.json({ error: "brandName required" }, { status: 400 });
 
-  // Skip action — just write to Supabase
+  // Skip — upsert skipped status
   if (skip) {
     await supabase
       .from("brand_logos")
       .upsert({ brand_name: brandName, status: "skipped" }, { onConflict: "brand_name" });
+    return NextResponse.json({ ok: true });
+  }
+
+  // Move to pending — delete the row so absence = pending
+  if (moveToPending) {
+    await supabase.from("brand_logos").delete().eq("brand_name", brandName);
     return NextResponse.json({ ok: true });
   }
 
