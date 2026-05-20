@@ -170,9 +170,7 @@ export default function PendingBrands() {
     }
   }, [brands, localStatus, selectBrand]);  // previewCache intentionally omitted — advance uses current cache via closure
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleImageFile = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string;
@@ -180,6 +178,30 @@ export default function PendingBrands() {
       if (selectedName) generatePreview(selectedName, dataUrl);
     };
     reader.readAsDataURL(file);
+  }, [selectedName, generatePreview]);
+
+  // Global paste listener — active whenever the upload zone is visible
+  useEffect(() => {
+    if (!isFetchError) return;
+    const handler = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) handleImageFile(new File([file], `pasted-logo.${item.type.split("/")[1]}`, { type: item.type }));
+          break;
+        }
+      }
+    };
+    document.addEventListener("paste", handler);
+    return () => document.removeEventListener("paste", handler);
+  }, [isFetchError, handleImageFile]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    handleImageFile(file);
     // Reset input so the same file can be re-selected
     e.target.value = "";
   };
@@ -430,14 +452,26 @@ export default function PendingBrands() {
                         {/* Drop zone */}
                         <div
                           onClick={() => fileInputRef.current?.click()}
-                          className="relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-6 py-10 cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors"
+                          onPaste={(e) => {
+                            const items = e.clipboardData?.items;
+                            if (!items) return;
+                            for (const item of Array.from(items)) {
+                              if (item.type.startsWith("image/")) {
+                                const file = item.getAsFile();
+                                if (file) handleImageFile(new File([file], `pasted-logo.${item.type.split("/")[1]}`, { type: item.type }));
+                                break;
+                              }
+                            }
+                          }}
+                          tabIndex={0}
+                          className="relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-6 py-10 cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors focus:outline-none focus:border-orange-400"
                         >
                           {uploadedFile ? (
                             <>
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img src={uploadedFile.dataUrl} alt="Uploaded" className="max-h-20 max-w-[160px] object-contain rounded-lg" />
                               <p className="text-sm font-medium text-zinc-700">{uploadedFile.name}</p>
-                              <p className="text-xs text-zinc-400">Click to replace</p>
+                              <p className="text-xs text-zinc-400">Click to replace · or paste a new one</p>
                             </>
                           ) : (
                             <>
@@ -448,7 +482,8 @@ export default function PendingBrands() {
                               </div>
                               <div className="text-center">
                                 <p className="text-sm font-semibold text-zinc-700">Click to upload logo</p>
-                                <p className="text-xs text-zinc-400 mt-0.5">PNG, SVG, JPG, WebP</p>
+                                <p className="text-xs text-zinc-400 mt-0.5">or paste from clipboard <kbd className="ml-1 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-mono text-zinc-500">⌘V</kbd></p>
+                                <p className="text-xs text-zinc-300 mt-0.5">PNG, SVG, JPG, WebP</p>
                               </div>
                             </>
                           )}
