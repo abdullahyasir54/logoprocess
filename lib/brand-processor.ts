@@ -167,3 +167,63 @@ export async function recordBrandResult(brandName: string, status: "processed" |
     .from("brand_logos")
     .upsert({ brand_name: brandName, status }, { onConflict: "brand_name" });
 }
+
+export function pngUrlToOgKey(pngUrl: string): string {
+  const urlPath = new URL(pngUrl).pathname; // /brand-logos/1-Up-Nutrition-logo.png
+  const key = urlPath.slice(1);             // brand-logos/1-Up-Nutrition-logo.png
+  return key.replace(/\.png$/i, "-og.jpg"); // brand-logos/1-Up-Nutrition-logo-og.jpg
+}
+
+export async function generateOgFromPng(pngUrl: string): Promise<{
+  ogKey: string;
+  ogBuf: Buffer;
+}> {
+  let fetchRes: Response;
+  try {
+    fetchRes = await fetch(pngUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; brand-processor/1.0)" },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    throw new LogoFetchError(`Network error: ${err instanceof Error ? err.message : "unknown"}`);
+  }
+  if (!fetchRes.ok) throw new LogoFetchError(`Fetch failed: ${fetchRes.status}`);
+  const inputBuf = Buffer.from(await fetchRes.arrayBuffer());
+
+  const bg = await detectBg(inputBuf);
+  const meta = await sharp(inputBuf).metadata();
+  const srcSize = Math.max(meta.width ?? 1, meta.height ?? 1);
+
+  const maxLogoH = Math.round(BANNER_H * 0.65);
+  const logoSize = Math.min(maxLogoH, Math.max(srcSize, Math.min(maxLogoH, srcSize * 2)));
+
+  const scaledLogo = srcSize !== logoSize
+    ? await sharp(inputBuf).resize(logoSize, logoSize, { fit: "fill", kernel: "lanczos3" }).toBuffer()
+    : inputBuf;
+
+  const ogBuf = await sharp({
+    create: { width: BANNER_W, height: BANNER_H, channels: 3, background: bg },
+  })
+    .composite([{
+      input: scaledLogo,
+      left: Math.floor((BANNER_W - logoSize) / 2),
+      top: Math.floor((BANNER_H - logoSize) / 2),
+    }])
+    .flatten({ background: bg })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+
+  return { ogKey: pngUrlToOgKey(pngUrl), ogBuf };
+}
+
+export async function uploadOgImage(ogKey: string, ogBuf: Buffer): Promise<string> {
+  const s3 = makeS3();
+  await s3.send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: ogKey,
+    Body: ogBuf,
+    ContentType: "image/jpeg",
+    CacheControl: "max-age=0",
+  }));
+  return `${CDN}/${ogKey}`;
+}
