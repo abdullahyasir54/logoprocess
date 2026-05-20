@@ -168,6 +168,33 @@ export async function recordBrandResult(brandName: string, status: "processed" |
     .upsert({ brand_name: brandName, status }, { onConflict: "brand_name" });
 }
 
+export async function getDoneOgBrandNames(): Promise<Set<string>> {
+  const PAGE = 1000;
+  const names = new Set<string>();
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("og_images")
+      .select("brand_name")
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    for (const row of data) names.add(row.brand_name as string);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return names;
+}
+
+export async function recordOgResult(brandName: string, status: "processed" | "skipped", ogUrl?: string) {
+  await supabase
+    .from("og_images")
+    .upsert(
+      { brand_name: brandName, status, og_url: ogUrl ?? null },
+      { onConflict: "brand_name" },
+    );
+}
+
 export function pngUrlToOgKey(pngUrl: string): string {
   const urlPath = new URL(pngUrl).pathname; // /brand-logos/1-Up-Nutrition-logo.png
   const key = urlPath.slice(1);             // brand-logos/1-Up-Nutrition-logo.png

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
-import { generateOgFromPng, uploadOgImage, pngUrlToOgKey, LogoFetchError } from "@/lib/brand-processor";
+import { generateOgFromPng, uploadOgImage, pngUrlToOgKey, LogoFetchError, recordOgResult } from "@/lib/brand-processor";
 
 export const maxDuration = 60;
 
@@ -82,7 +82,16 @@ export async function POST(req: Request) {
     }
 
     const savedUrl = await uploadOgImage(ogKey, ogBuf);
-    await col.updateOne({ _id: doc._id }, { $set: { og_image_jpg_url: savedUrl } });
+    await Promise.all([
+      col.updateOne(
+        { _id: doc._id },
+        {
+          $set: { og_image_jpg_url: savedUrl },
+          $unset: { logo_pending: "" },
+        },
+      ),
+      recordOgResult(name, "processed", savedUrl),
+    ]);
 
     const [total, processed] = await Promise.all([
       col.countDocuments(HAS_PNG),

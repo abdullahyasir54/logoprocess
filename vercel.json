@@ -12,6 +12,11 @@
     { "path": "/api/cron/brand/1", "schedule": "* * * * *" },
     { "path": "/api/cron/brand/2", "schedule": "* * * * *" },
     { "path": "/api/cron/brand/3", "schedule": "* * * * *" },
-    { "path": "/api/cron/brand/4", "schedule": "* * * * *" }
+    { "path": "/api/cron/brand/4", "schedule": "* * * * *" },
+    { "path": "/api/cron/og/0", "schedule": "* * * * *" },
+    { "path": "/api/cron/og/1", "schedule": "* * * * *" },
+    { "path": "/api/cron/og/2", "schedule": "* * * * *" },
+    { "path": "/api/cron/og/3", "schedule": "* * * * *" },
+    { "path": "/api/cron/og/4", "schedule": "* * * * *" }
   ]
 }
