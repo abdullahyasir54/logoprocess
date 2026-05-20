@@ -54,6 +54,7 @@ export default function PendingBrands() {
   const [processError, setProcessError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedItemRef = useRef<HTMLLIElement>(null);
 
@@ -131,6 +132,7 @@ export default function PendingBrands() {
     setPreviewError(null);
     setIsFetchError(false);
     setProcessError(null);
+    setCopied(false);
     const brand = list.find((b) => b.name === name);
     if (brand) {
       if (!brand.logoUrl) {
@@ -355,17 +357,38 @@ export default function PendingBrands() {
                 <div>
                   <h2 className="text-xl font-bold text-zinc-900">{currentBrand.name}</h2>
                   {websiteHref && (
-                    <a
-                      href={websiteHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 mt-1 text-sm text-blue-500 hover:underline"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                      {currentBrand.website}
-                    </a>
+                    <div className="inline-flex items-center gap-1.5 mt-1">
+                      <a
+                        href={websiteHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-sm text-blue-500 hover:underline"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        {currentBrand.website}
+                      </a>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(currentBrand.website!);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                        className="rounded p-1 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition"
+                        title="Copy website"
+                      >
+                        {copied ? (
+                          <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                   )}
                   <div className="mt-1.5 flex items-center gap-2">
                     <span className="text-xs text-zinc-400">Logo source:</span>
