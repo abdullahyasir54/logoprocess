@@ -12,12 +12,11 @@ export async function GET() {
     const docs = await col
       .find(
         { logo_pending: true },
-        { projection: { brandName: 1, brandLogo: 1, brandWebsite: 1, _id: 1 } },
+        { projection: { brandName: 1, brandLogo: 1, brandWebsite: 1, inaccessible: 1, _id: 1 } },
       )
       .sort({ brandName: 1 })
       .toArray();
 
-    // Fetch Supabase statuses for all returned brands in one query
     const names = docs.map((d) => String(d.brandName ?? d._id));
     let statusMap = new Map<string, string>();
     if (names.length > 0) {
@@ -34,6 +33,7 @@ export async function GET() {
         name: String(d.brandName ?? d._id),
         logoUrl: d.brandLogo ? String(d.brandLogo) : null,
         website: d.brandWebsite ? String(d.brandWebsite) : null,
+        inaccessible: !!d.inaccessible,
         status: statusMap.get(String(d.brandName ?? d._id)) ?? "pending",
       })),
       total: docs.length,
@@ -45,18 +45,18 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const { brandName, logoUrl, logoData, preview, skip, moveToPending } = body as {
+  const { brandName, logoUrl, logoData, preview, skip, moveToPending, markInaccessible } = body as {
     brandName?: string;
     logoUrl?: string;
     logoData?: string;
     preview?: boolean;
     skip?: boolean;
     moveToPending?: boolean;
+    markInaccessible?: boolean;
   };
 
   if (!brandName) return NextResponse.json({ error: "brandName required" }, { status: 400 });
 
-  // Skip — upsert skipped status
   if (skip) {
     await supabase
       .from("brand_logos")
@@ -64,9 +64,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  // Move to pending — delete the row so absence = pending
   if (moveToPending) {
     await supabase.from("brand_logos").delete().eq("brand_name", brandName);
+    const client = await clientPromise;
+    await client.db("RawDB").collection("brand_migration")
+      .updateOne({ brandName }, { $unset: { inaccessible: "" } });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (markInaccessible) {
+    const client = await clientPromise;
+    await client.db("RawDB").collection("brand_migration")
+      .updateOne({ brandName }, { $set: { inaccessible: true } });
     return NextResponse.json({ ok: true });
   }
 
@@ -108,7 +117,7 @@ export async function POST(req: Request) {
         { _id: doc._id },
         {
           $set: { brand_logo_png_url: squareUrl, og_image_jpg_url: bannerUrl },
-          $unset: { logo_pending: "" },
+          $unset: { logo_pending: "", inaccessible: "" },
         },
       ),
       recordBrandResult(name, "processed"),

@@ -7,6 +7,7 @@ interface Brand {
   name: string;
   logoUrl: string | null;
   website: string | null;
+  inaccessible: boolean;
   status: "pending" | "skipped";
 }
 
@@ -16,8 +17,8 @@ interface PreviewData {
   slug: string;
 }
 
-type LocalStatus = "pending" | "done" | "skipped";
-type Filter = "pending" | "skipped";
+type LocalStatus = "pending" | "done" | "skipped" | "inaccessible";
+type Filter = "pending" | "skipped" | "inaccessible";
 
 function Spinner({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -58,6 +59,7 @@ export default function PendingBrands() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showUploadZone, setShowUploadZone] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -70,7 +72,8 @@ export default function PendingBrands() {
         // Seed localStatus from Supabase statuses returned by the API
         const seed: Record<string, LocalStatus> = {};
         for (const b of brandList) {
-          if (b.status === "skipped") seed[b.name] = "skipped";
+          if (b.inaccessible) seed[b.name] = "inaccessible";
+          else if (b.status === "skipped") seed[b.name] = "skipped";
         }
         setLocalStatus(seed);
         setLoading(false);
@@ -88,6 +91,7 @@ export default function PendingBrands() {
   const pendingCount = brands.filter((b) => getStatus(b.name, localStatus) === "pending").length;
   const skippedCount = brands.filter((b) => getStatus(b.name, localStatus) === "skipped").length;
   const doneCount = brands.filter((b) => getStatus(b.name, localStatus) === "done").length;
+  const inaccessibleCount = brands.filter((b) => getStatus(b.name, localStatus) === "inaccessible").length;
 
   const fetchPreviewData = useCallback(async (name: string, fileData?: string): Promise<PreviewData | null> => {
     const body: Record<string, unknown> = { brandName: name, preview: true };
@@ -146,6 +150,7 @@ export default function PendingBrands() {
     setIsFetchError(false);
     setProcessError(null);
     setCopied(false);
+    setShowUploadZone(false);
     const brand = list.find((b) => b.name === name);
     if (brand) {
       if (!brand.logoUrl) {
@@ -204,7 +209,7 @@ export default function PendingBrands() {
   }, [selectedName, generatePreview]);
 
   useEffect(() => {
-    if (!isFetchError) return;
+    if (!isFetchError && !showUploadZone) return;
     const handler = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -218,7 +223,7 @@ export default function PendingBrands() {
     };
     document.addEventListener("paste", handler);
     return () => document.removeEventListener("paste", handler);
-  }, [isFetchError, handleImageFile]);
+  }, [isFetchError, showUploadZone, handleImageFile]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -272,6 +277,18 @@ export default function PendingBrands() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ brandName: name, moveToPending: true }),
+    }).catch(() => { /* non-blocking */ });
+  };
+
+  const handleMarkInaccessible = async () => {
+    if (!selectedName) return;
+    const name = selectedName;
+    setLocalStatus((prev) => ({ ...prev, [name]: "inaccessible" }));
+    advanceToNext(name, "inaccessible", filter);
+    await fetch("/api/pending-brands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brandName: name, markInaccessible: true }),
     }).catch(() => { /* non-blocking */ });
   };
 
@@ -330,31 +347,26 @@ export default function PendingBrands() {
         <aside className="w-72 shrink-0 border-r border-zinc-200 bg-white flex flex-col overflow-hidden">
           {/* Filter tabs */}
           <div className="flex border-b border-zinc-100 shrink-0">
-            {(["pending", "skipped"] as Filter[]).map((f) => {
-              const count = f === "pending" ? pendingCount : skippedCount;
-              return (
-                <button
-                  key={f}
-                  onClick={() => switchFilter(f)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold transition-colors ${
-                    filter === f
-                      ? f === "pending"
-                        ? "text-orange-600 border-b-2 border-orange-500 bg-orange-50"
-                        : "text-amber-600 border-b-2 border-amber-400 bg-amber-50"
-                      : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50"
-                  }`}
-                >
-                  {f === "pending" ? "Pending" : "Skipped"}
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                    filter === f
-                      ? f === "pending" ? "bg-orange-100 text-orange-600" : "bg-amber-100 text-amber-600"
-                      : "bg-zinc-100 text-zinc-400"
-                  }`}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
+            {([
+              { key: "pending", label: "Pending", count: pendingCount, active: "text-orange-600 border-b-2 border-orange-500 bg-orange-50", badge: "bg-orange-100 text-orange-600" },
+              { key: "skipped", label: "Skipped", count: skippedCount, active: "text-amber-600 border-b-2 border-amber-400 bg-amber-50", badge: "bg-amber-100 text-amber-600" },
+              { key: "inaccessible", label: "N/A", count: inaccessibleCount, active: "text-red-600 border-b-2 border-red-400 bg-red-50", badge: "bg-red-100 text-red-600" },
+            ] as { key: Filter; label: string; count: number; active: string; badge: string }[]).map(({ key, label, count, active, badge }) => (
+              <button
+                key={key}
+                onClick={() => switchFilter(key)}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 text-xs font-semibold transition-colors ${
+                  filter === key ? active : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50"
+                }`}
+              >
+                {label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                  filter === key ? badge : "bg-zinc-100 text-zinc-400"
+                }`}>
+                  {count}
+                </span>
+              </button>
+            ))}
           </div>
 
           <ul className="flex-1 overflow-y-auto divide-y divide-zinc-50">
@@ -368,7 +380,7 @@ export default function PendingBrands() {
               <li className="flex flex-col items-center justify-center gap-2 py-16 text-center px-4">
                 <span className="text-2xl">{filter === "pending" ? "✓" : "—"}</span>
                 <p className="text-xs text-zinc-400">
-                  {filter === "pending" ? "No pending brands" : "No skipped brands"}
+                  {filter === "pending" ? "No pending brands" : filter === "skipped" ? "No skipped brands" : "No inaccessible brands"}
                 </p>
               </li>
             ) : filteredBrands.map((brand) => {
@@ -381,13 +393,19 @@ export default function PendingBrands() {
                     isSelected
                       ? filter === "pending"
                         ? "bg-orange-50 border-l-2 border-orange-500"
-                        : "bg-amber-50 border-l-2 border-amber-400"
+                        : filter === "skipped"
+                        ? "bg-amber-50 border-l-2 border-amber-400"
+                        : "bg-red-50 border-l-2 border-red-400"
                       : "hover:bg-zinc-50 border-l-2 border-transparent"
                   }`}
                 >
                   {filter === "skipped" ? (
                     <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 uppercase tracking-wide">
                       skipped
+                    </span>
+                  ) : filter === "inaccessible" ? (
+                    <span className="shrink-0 rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-500 uppercase tracking-wide">
+                      N/A
                     </span>
                   ) : (
                     <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? "bg-orange-500" : "bg-zinc-300"}`} />
@@ -430,12 +448,14 @@ export default function PendingBrands() {
                 </svg>
               </div>
               <p className="text-lg font-semibold text-zinc-800">
-                {filter === "pending" ? "All caught up!" : "Nothing skipped yet"}
+                {filter === "pending" ? "All caught up!" : filter === "skipped" ? "Nothing skipped yet" : "No inaccessible brands"}
               </p>
               <p className="text-sm text-zinc-400">
                 {filter === "pending"
                   ? skippedCount > 0 ? `You have ${skippedCount} skipped brand${skippedCount > 1 ? "s" : ""} to revisit.` : "Every brand has been processed."
-                  : "Brands you skip will appear here."}
+                  : filter === "skipped"
+                  ? "Brands you skip will appear here."
+                  : "Brands marked as inaccessible will appear here."}
               </p>
               {filter === "pending" && skippedCount > 0 && (
                 <button
@@ -461,6 +481,11 @@ export default function PendingBrands() {
                     {localStatus[currentBrand.name] === "skipped" && (
                       <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-600 uppercase tracking-wide">
                         skipped
+                      </span>
+                    )}
+                    {localStatus[currentBrand.name] === "inaccessible" && (
+                      <span className="rounded-md bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600 uppercase tracking-wide">
+                        inaccessible
                       </span>
                     )}
                   </div>
@@ -604,6 +629,50 @@ export default function PendingBrands() {
                         <p className="text-xs text-zinc-400 font-mono">{preview.slug}-logo-og.jpg</p>
                       </div>
                     </div>
+
+                    {showUploadZone && (
+                      <div className="space-y-3 pt-2 border-t border-zinc-100">
+                        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Use different image</p>
+                        <div
+                          onClick={() => fileInputRef.current?.click()}
+                          onPaste={(e) => {
+                            const items = e.clipboardData?.items;
+                            if (!items) return;
+                            for (const item of Array.from(items)) {
+                              if (item.type.startsWith("image/")) {
+                                const file = item.getAsFile();
+                                if (file) handleImageFile(new File([file], `pasted-logo.${item.type.split("/")[1]}`, { type: item.type }));
+                                break;
+                              }
+                            }
+                          }}
+                          tabIndex={0}
+                          className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-6 py-8 cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors focus:outline-none focus:border-orange-400"
+                        >
+                          {uploadedFile ? (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={uploadedFile.dataUrl} alt="Uploaded" className="max-h-16 max-w-[140px] object-contain rounded-lg" />
+                              <p className="text-sm font-medium text-zinc-700">{uploadedFile.name}</p>
+                              <p className="text-xs text-zinc-400">Click to replace · or paste a new one</p>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-10 h-10 rounded-xl bg-white border border-zinc-200 flex items-center justify-center shadow-sm">
+                                <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-sm font-semibold text-zinc-700">Click to upload different logo</p>
+                                <p className="text-xs text-zinc-400 mt-0.5">or paste from clipboard <kbd className="ml-1 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-mono text-zinc-500">⌘V</kbd></p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -619,8 +688,8 @@ export default function PendingBrands() {
               )}
 
               {/* Action buttons */}
-              <div className="flex items-center gap-3">
-                {filter === "skipped" ? (
+              <div className="flex items-center flex-wrap gap-3">
+                {filter === "skipped" || filter === "inaccessible" ? (
                   <button
                     onClick={handleMoveToPending}
                     disabled={processing}
@@ -644,6 +713,19 @@ export default function PendingBrands() {
                   </button>
                 )}
 
+                {filter !== "inaccessible" && (
+                  <button
+                    onClick={handleMarkInaccessible}
+                    disabled={processing}
+                    className="flex items-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 transition disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    Mark Inaccessible
+                  </button>
+                )}
+
                 <button
                   onClick={handleProcess}
                   disabled={processing || previewLoading || !preview}
@@ -658,6 +740,19 @@ export default function PendingBrands() {
                     </>
                   )}
                 </button>
+
+                {preview && !showUploadZone && (
+                  <button
+                    onClick={() => setShowUploadZone(true)}
+                    disabled={previewLoading || processing}
+                    className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-500 hover:bg-zinc-50 transition disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Use Different Image
+                  </button>
+                )}
 
                 {preview && (
                   <button
